@@ -93,6 +93,32 @@
     height: 100%;
     display: flex;
     align-items: flex-end;
+    position: relative;
+
+    // Instant tooltip from data-label — the whole column (not just the bar)
+    // is the hover target, so short bars are as reachable as tall ones.
+    &:hover::after {
+      content: attr(data-label);
+      position: absolute;
+      top: -6px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 5;
+      pointer-events: none;
+      white-space: nowrap;
+      background: rgba(9, 15, 24, 0.95);
+      color: #f2f6fb;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 12px;
+      line-height: 1.4;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    }
+
+    &:hover .BirdseyeDashboard-chartBar {
+      background: fade(@birdseye-accent, 85%);
+    }
   }
 
   &-chartBar {

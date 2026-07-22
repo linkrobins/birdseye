@@ -145,7 +145,9 @@ export default class BirdseyeDashboard extends Component {
       m(
         '.BirdseyeDashboard-chart',
         ts.map((p) =>
-          m('.BirdseyeDashboard-chartCol', { title: `${p.date}: ${p.visits}` }, [
+          // data-label feeds the pure-CSS hover tooltip (instant, styled) —
+          // native title tooltips are delayed enough to read as missing.
+          m('.BirdseyeDashboard-chartCol', { 'data-label': `${shortDate(p.date)} · ${p.visits}` }, [
             m('.BirdseyeDashboard-chartBar', {
               style: { height: `${Math.max(Math.round((p.visits / max) * 100), p.visits ? 2 : 0)}%` },
             }),
@@ -252,6 +254,14 @@ function trans(key: string): Mithril.Children {
 
 function transText(key: string): string {
   return String(app.translator.trans(`linkrobins-birdseye.admin.dashboard.${key}`));
+}
+
+function shortDate(iso: string): string {
+  try {
+    return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  } catch {
+    return iso;
+  }
 }
 
 function fmtDur(sec: number): string {
