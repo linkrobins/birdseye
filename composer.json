@@ -1,0 +1,66 @@
+{
+    "name": "linkrobins/birdseye",
+    "description": "Forum analytics for Flarum — server-side, zero JavaScript, no cookies. Your stats live in your own database.",
+    "type": "flarum-extension",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Karl Bullock",
+            "email": "karl@linkrobins.com"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/linkrobins/birdseye/issues",
+        "source": "https://github.com/linkrobins/birdseye"
+    },
+    "require": {
+        "php": "^8.3",
+        "flarum/core": "^2.0"
+    },
+    "require-dev": {
+        "flarum/testing": "^2.0",
+        "flarum/phpstan": "^2.0"
+    },
+    "minimum-stability": "beta",
+    "prefer-stable": true,
+    "autoload": {
+        "psr-4": {
+            "LinkRobins\\Birdseye\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "LinkRobins\\Birdseye\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "analyse:phpstan": "phpstan analyse",
+        "clear-cache:phpstan": "phpstan clear-result-cache",
+        "test": [
+            "@test:unit",
+            "@test:integration"
+        ],
+        "test:unit": "phpunit -c tests/phpunit.unit.xml",
+        "test:integration": "phpunit -c tests/phpunit.integration.xml",
+        "test:setup": "@php tests/integration/setup.php"
+    },
+    "scripts-descriptions": {
+        "analyse:phpstan": "Run static analysis",
+        "test": "Run all tests",
+        "test:unit": "Run unit tests",
+        "test:integration": "Run integration tests",
+        "test:setup": "Set up the integration test database"
+    },
+    "extra": {
+        "flarum-extension": {
+            "migrations": "migrations",
+            "title": "Link Robins Birdseye",
+            "category": "feature",
+            "icon": {
+                "name": "fas fa-chart-line",
+                "backgroundColor": "#0b1d26",
+                "color": "#6fd7e4"
+            }
+        }
+    }
+}
