@@ -25,6 +25,18 @@ that's the permanent history, a few kilobytes per month.
   stored **in your database**. We keep nothing. Cancel anytime; every stat
   you've collected stays with you.
 
+## Beyond the numbers
+
+- **Forum health, not just traffic** — new-member activation (who posts
+  within their first week), discussions that get read but never answered,
+  top tags, live search terms, and a "today so far" strip straight from the
+  buffer.
+- **Share the dashboard** — a `View forum analytics` permission lets any
+  group you choose open the dashboard from their user menu, without admin
+  access. Nobody holds it until you grant it.
+- **Weekly digest** — every Monday, administrators get a plain-text email
+  summary of last week vs the week before. One switch to turn off.
+
 ## Installation
 
 ```sh
