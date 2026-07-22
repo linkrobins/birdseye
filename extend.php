@@ -48,9 +48,11 @@ return [
         // Kill-switch: collection can be paused without disabling the
         // extension (existing rollups keep rendering).
         ->default('linkrobins-birdseye.collect', true)
-        // Where batches are pushed for processing. Only meaningful with a
-        // license key; without one the sync command rolls up basic counts
-        // locally and never phones out.
+        // Where batches are pushed for processing. Deliberately NOT exposed
+        // in the admin UI — customers never change it; it stays a hidden
+        // setting so dev/staging can override it manually. Only meaningful
+        // with a license key; without one the sync command rolls up basic
+        // counts locally and never phones out.
         ->default('linkrobins-birdseye.endpoint', 'https://linkrobins.com/api/birdseye/process')
         ->default('linkrobins-birdseye.license_key', '')
         // Store an anonymized IP prefix (/24 v4, /48 v6) in the 72h buffer so

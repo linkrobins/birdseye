@@ -23,11 +23,21 @@
     gap: 6px;
   }
 
+  // One row of six, filling the full container width (auto-fill would keep
+  // phantom empty tracks and leave dead space on the right).
   &-tiles {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 12px;
     margin-bottom: 12px;
+
+    @media (max-width: 1100px) {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    @media (max-width: 580px) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 
   &-tile {
@@ -93,11 +103,20 @@
     transition: height 0.2s ease;
   }
 
+  // Six list cards as a firm 3-across grid (two rows of three).
   &-lists {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
     margin-bottom: 12px;
+
+    @media (max-width: 1100px) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    @media (max-width: 580px) {
+      grid-template-columns: minmax(0, 1fr);
+    }
 
     .BirdseyeDashboard-card {
       margin-bottom: 0;

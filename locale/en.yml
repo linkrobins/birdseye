@@ -32,10 +32,6 @@ linkrobins-birdseye:
       license_key_help: >-
         From your Birdseye subscription at linkrobins.com. Without a key the
         extension records basic daily counts only, entirely locally.
-      endpoint_label: Processing endpoint
-      endpoint_help: >-
-        Where daily batches are sent for processing. Leave the default unless
-        support tells you otherwise.
       geo_ip_prefix_label: Country lookup via anonymized IP prefix
       geo_ip_prefix_help: >-
         When no proxy country header is present, keep a truncated IP prefix
