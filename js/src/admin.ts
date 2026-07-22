@@ -1,4 +1,6 @@
 import app from 'flarum/admin/app';
+import m from 'mithril';
+import BirdseyeDashboard from './components/BirdseyeDashboard';
 
 app.initializers.add('linkrobins-birdseye', () => {
   app.registry
@@ -26,5 +28,7 @@ app.initializers.add('linkrobins-birdseye', () => {
       type: 'switch',
       label: app.translator.trans('linkrobins-birdseye.admin.settings.geo_ip_prefix_label'),
       help: app.translator.trans('linkrobins-birdseye.admin.settings.geo_ip_prefix_help'),
-    });
+    })
+    // The dashboard renders on the same page, beneath the settings form.
+    .registerSetting(() => m(BirdseyeDashboard), -10);
 });

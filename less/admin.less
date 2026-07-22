@@ -1,0 +1,179 @@
+// Birdseye admin dashboard. Self-contained (Flarum admin has no grid
+// utilities); colors lean on Flarum's CSS variables so the cards follow the
+// admin theme, with the brand cyan as the single data accent.
+@birdseye-accent: rgba(30, 195, 214, 1);
+
+.BirdseyeDashboard {
+  margin-top: 24px;
+
+  &-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+
+    h3 {
+      margin: 0;
+    }
+  }
+
+  &-ranges {
+    display: flex;
+    gap: 6px;
+  }
+
+  &-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  &-tile {
+    background: var(--body-bg-light, var(--body-bg));
+    border: 1px solid var(--control-bg);
+    border-radius: var(--border-radius);
+    padding: 12px 14px;
+  }
+
+  &-tileLabel {
+    color: var(--muted-color);
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+
+  &-tileValue {
+    font-size: 22px;
+    font-weight: 700;
+  }
+
+  &-card {
+    background: var(--body-bg-light, var(--body-bg));
+    border: 1px solid var(--control-bg);
+    border-radius: var(--border-radius);
+    padding: 12px 14px;
+    margin-bottom: 12px;
+  }
+
+  &-cardTitle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 8px;
+  }
+
+  &-span {
+    color: var(--muted-color);
+    font-weight: 400;
+    font-size: 12px;
+  }
+
+  &-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 180px;
+  }
+
+  &-chartCol {
+    flex: 1 1 0;
+    height: 100%;
+    display: flex;
+    align-items: flex-end;
+  }
+
+  &-chartBar {
+    width: 100%;
+    border-radius: 3px 3px 0 0;
+    background: fade(@birdseye-accent, 55%);
+    min-height: 0;
+    transition: height 0.2s ease;
+  }
+
+  &-lists {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    margin-bottom: 12px;
+
+    .BirdseyeDashboard-card {
+      margin-bottom: 0;
+    }
+  }
+
+  &-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    margin: 3px 0;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  &-rowBar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    border-radius: 6px;
+    background: fade(@birdseye-accent, 12%);
+  }
+
+  &-rowLabel {
+    position: relative;
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &-rowValue {
+    position: relative;
+    font-weight: 600;
+  }
+
+  &-map svg {
+    width: 100%;
+    height: auto;
+    display: block;
+
+    path {
+      fill: rgba(128, 144, 160, 0.25);
+      stroke: none;
+      transition: fill 0.2s;
+
+      &:hover {
+        fill: rgba(128, 144, 160, 0.45);
+      }
+
+      &[data-v] {
+        cursor: default;
+
+        &:hover {
+          filter: brightness(1.25);
+        }
+      }
+    }
+  }
+
+  &-mapTip {
+    position: absolute;
+    display: none;
+    pointer-events: none;
+    z-index: 5;
+    background: rgba(9, 15, 24, 0.95);
+    color: #f2f6fb;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  }
+}

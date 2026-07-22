@@ -1,5 +1,28 @@
 linkrobins-birdseye:
   admin:
+    dashboard:
+      title: Analytics
+      range_7d: 7 days
+      range_30d: 30 days
+      visitors: Visitors
+      pageviews: Pageviews
+      bounce_rate: Bounce rate
+      avg_visit: Avg. visit
+      posts: Posts
+      new_members: New members
+      visitors_per_day: Visitors per day
+      top_pages: Top pages
+      top_discussions: Top discussions
+      sources: Sources
+      searches: Searches
+      devices: Devices
+      countries: Countries
+      world: World
+      direct: Direct / unknown
+      unknown: Unknown
+      no_data: No data yet.
+      visitors_word: visitors
+      no_visitors: No visitors
     settings:
       collect_label: Collect analytics
       collect_help: >-

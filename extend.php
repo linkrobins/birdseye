@@ -3,6 +3,8 @@
 use Flarum\Extend;
 use Flarum\Post\Event\Posted;
 use Flarum\User\Event\Registered;
+use LinkRobins\Birdseye\Api\StatsHandler;
+use LinkRobins\Birdseye\Api\WorldMapHandler;
 use LinkRobins\Birdseye\Capture\CaptureMiddleware;
 use LinkRobins\Birdseye\Console\SyncCommand;
 use LinkRobins\Birdseye\Listener\RecordPosted;
@@ -10,7 +12,13 @@ use LinkRobins\Birdseye\Listener\RecordRegistered;
 
 return [
     (new Extend\Frontend('admin'))
-        ->js(__DIR__ . '/js/dist/admin.js'),
+        ->js(__DIR__ . '/js/dist/admin.js')
+        ->css(__DIR__ . '/less/admin.less'),
+
+    // Dashboard data + the bundled world-map asset. Both admin-gated.
+    (new Extend\Routes('api'))
+        ->get('/birdseye/stats', 'birdseye.stats', StatsHandler::class)
+        ->get('/birdseye/world-map', 'birdseye.world-map', WorldMapHandler::class),
 
     new Extend\Locales(__DIR__ . '/locale'),
 
