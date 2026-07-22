@@ -53,15 +53,18 @@ export default class BirdseyeDashboard extends Component {
         m.redraw();
       });
 
-    app
-      .request<string>({
-        method: 'GET',
-        url: `${api}/birdseye/world-map`,
-        extract: (xhr: XMLHttpRequest) => xhr.responseText,
-      })
+    // Plain fetch, NOT app.request: the response is SVG text, and Flarum's
+    // request wrapper treats any non-JSON body as an error (in debug mode it
+    // throws the raw response up in a modal). Same-origin cookies carry the
+    // admin session; GETs need no CSRF token.
+    fetch(`${api}/birdseye/world-map`, { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
       .then((svg) => {
         this.mapMarkup = svg;
         m.redraw();
+      })
+      .catch(() => {
+        // No map — the dashboard renders everything else regardless.
       });
   }
 
