@@ -1,8 +1,10 @@
 <?php
 
+use Flarum\Api\Resource\ForumResource;
 use Flarum\Extend;
 use Flarum\Post\Event\Posted;
 use Flarum\User\Event\Registered;
+use LinkRobins\Birdseye\Api\ForumFields;
 use LinkRobins\Birdseye\Api\StatsHandler;
 use LinkRobins\Birdseye\Api\WorldMapHandler;
 use LinkRobins\Birdseye\Capture\ApiCaptureMiddleware;
@@ -16,7 +18,18 @@ return [
         ->js(__DIR__ . '/js/dist/admin.js')
         ->css(__DIR__ . '/less/admin.less'),
 
-    // Dashboard data + the bundled world-map asset. Both admin-gated.
+    // Forum side: an Analytics entry in the session menu opening the same
+    // dashboard in a modal, for groups granted the viewStats permission.
+    (new Extend\Frontend('forum'))
+        ->js(__DIR__ . '/js/dist/forum.js')
+        ->css(__DIR__ . '/less/forum.less'),
+
+    // Tells the forum frontend whether to offer that entry (fail-closed).
+    (new Extend\ApiResource(ForumResource::class))
+        ->fields(ForumFields::class),
+
+    // Dashboard data + the bundled world-map asset. Both gated on the
+    // viewStats permission (admins always pass).
     (new Extend\Routes('api'))
         ->get('/birdseye/stats', 'birdseye.stats', StatsHandler::class)
         ->get('/birdseye/world-map', 'birdseye.world-map', WorldMapHandler::class),

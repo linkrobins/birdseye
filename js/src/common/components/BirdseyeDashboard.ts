@@ -1,5 +1,6 @@
-import app from 'flarum/admin/app';
+import app from 'flarum/common/app';
 import Component from 'flarum/common/Component';
+import type { ComponentAttrs } from 'flarum/common/Component';
 import LoadingIndicator from 'flarum/common/components/LoadingIndicator';
 import m from 'mithril';
 import type Mithril from 'mithril';
@@ -27,12 +28,18 @@ interface RangeBlock {
   searches: ListRow[];
 }
 
+export interface BirdseyeDashboardAttrs extends ComponentAttrs {
+  /** Skip the built-in heading (the range switcher stays) — for hosts that already provide a title, like the forum modal. */
+  hideTitle?: boolean;
+}
+
 /**
- * The analytics dashboard, rendered on the extension's admin page beneath
- * its settings. Reads local rollups via GET /api/birdseye/stats; the world
- * map SVG is fetched once and shaded per range.
+ * The analytics dashboard — rendered on the extension's admin page beneath
+ * its settings, and inside the forum's Analytics modal for groups holding
+ * the viewStats permission. Reads local rollups via GET /api/birdseye/stats;
+ * the world map SVG is fetched once and shaded per range.
  */
-export default class BirdseyeDashboard extends Component {
+export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs> {
   loading = true;
   ranges: Record<string, RangeBlock> | null = null;
   range = '30d';
@@ -83,7 +90,7 @@ export default class BirdseyeDashboard extends Component {
 
     return m('.BirdseyeDashboard', [
       m('.BirdseyeDashboard-header', [
-        m('h3', trans('title')),
+        this.attrs.hideTitle ? m('span') : m('h3', trans('title')),
         m(
           '.BirdseyeDashboard-ranges',
           ['7d', '30d'].map((r) =>
@@ -209,9 +216,7 @@ export default class BirdseyeDashboard extends Component {
         tip.textContent = '';
         tip.appendChild(Object.assign(document.createElement('strong'), { textContent: p.dataset.name || '' }));
         tip.appendChild(document.createElement('br'));
-        tip.appendChild(
-          document.createTextNode(v ? `${v} ${transText('visitors_word')} · ${p.dataset.p}%` : transText('no_visitors'))
-        );
+        tip.appendChild(document.createTextNode(v ? `${v} ${transText('visitors_word')} · ${p.dataset.p}%` : transText('no_visitors')));
         tip.style.display = 'block';
         const r = el.getBoundingClientRect();
         const x = e.clientX - r.left;
@@ -248,12 +253,13 @@ export default class BirdseyeDashboard extends Component {
   }
 }
 
+// lib.* keys ship to both frontends (admin.*/forum.* are filtered per-bundle).
 function trans(key: string): Mithril.Children {
-  return app.translator.trans(`linkrobins-birdseye.admin.dashboard.${key}`);
+  return app.translator.trans(`linkrobins-birdseye.lib.dashboard.${key}`);
 }
 
 function transText(key: string): string {
-  return String(app.translator.trans(`linkrobins-birdseye.admin.dashboard.${key}`));
+  return String(app.translator.trans(`linkrobins-birdseye.lib.dashboard.${key}`));
 }
 
 function shortDate(iso: string): string {

@@ -1,0 +1,16 @@
+// Forum bundle: the dashboard renders inside the Analytics session-menu
+// modal. Core caps .Modal at 600px — too narrow for six tiles and the map.
+@import "dashboard.less";
+
+.Modal.BirdseyeModal {
+  max-width: 1000px;
+
+  .BirdseyeDashboard {
+    margin-top: 0;
+  }
+
+  // Room for the range switcher next to the modal's own title.
+  .BirdseyeDashboard-header {
+    margin-top: -4px;
+  }
+}

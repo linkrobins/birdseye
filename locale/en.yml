@@ -1,5 +1,7 @@
 linkrobins-birdseye:
-  admin:
+  # lib keys ship to both frontends — the dashboard renders in the admin
+  # settings page and in the forum's Analytics modal.
+  lib:
     dashboard:
       title: Analytics
       range_7d: 7 days
@@ -23,6 +25,12 @@ linkrobins-birdseye:
       no_data: No data yet.
       visitors_word: visitors
       no_visitors: No visitors
+  forum:
+    session_menu:
+      analytics_button: Analytics
+  admin:
+    permissions:
+      view_stats_label: View forum analytics
     settings:
       collect_label: Collect analytics
       collect_help: >-

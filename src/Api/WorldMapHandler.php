@@ -4,6 +4,7 @@ namespace LinkRobins\Birdseye\Api;
 
 use Flarum\Http\RequestUtil;
 use Laminas\Diactoros\Response;
+use LinkRobins\Birdseye\Permissions;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
@@ -18,7 +19,9 @@ class WorldMapHandler implements RequestHandlerInterface
 {
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
-        RequestUtil::getActor($request)->assertAdmin();
+        $actor = RequestUtil::getActor($request);
+        $actor->assertRegistered();
+        $actor->assertPermission($actor->hasPermission(Permissions::VIEW_STATS));
 
         $response = new Response('php://memory', 200, [
             'Content-Type' => 'image/svg+xml',

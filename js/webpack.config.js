@@ -6,6 +6,7 @@ const config = require('flarum-webpack-config')();
 
 config.entry = {
     admin: path.resolve(__dirname, 'src/admin.ts'),
+    forum: path.resolve(__dirname, 'src/forum.ts'),
 };
 
 // This flarum-webpack-config version externalizes flarum/* and jquery but not
