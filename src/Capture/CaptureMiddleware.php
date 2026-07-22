@@ -10,14 +10,24 @@ use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
 /**
- * Server-side capture: registered on both the 'forum' stack (full page
- * loads) and the 'api' stack (the SPA's JSON:API navigation). Writes at most
- * one buffer row per request, after the response is built, and swallows its
- * own failures — analytics must never break a request (that includes never
- * joining a write transaction; a plain single-row INSERT outside any
- * transaction is the contract here).
+ * Server-side capture, registered per stack via the two thin subclasses:
+ * ForumCaptureMiddleware ('forum' stack — full page loads) and
+ * ApiCaptureMiddleware ('api' stack — the SPA's JSON:API navigation).
+ *
+ * The split is load-bearing, not cosmetic: Flarum renders pages by firing
+ * INTERNAL ApiClient subrequests through the api middleware stack, and
+ * those inherit the parent's headers (Accept, proxy country, everything),
+ * so no header heuristic can tell them apart from real traffic. The
+ * deterministic discriminators: internal subrequests never traverse the
+ * FORUM stack, and on the API stack they carry the first-party
+ * RequestUtil::isInternal() attribute stamped by ApiClient.
+ *
+ * Writes at most one buffer row per request, after the response is built,
+ * and swallows its own failures — analytics must never break a request
+ * (that includes never joining a write transaction; a plain single-row
+ * INSERT outside any transaction is the contract here).
  */
-class CaptureMiddleware implements MiddlewareInterface
+abstract class CaptureMiddleware implements MiddlewareInterface
 {
     /** Bot fragments checked against the lowercased user agent. */
     protected const BOT_MARKERS = [
@@ -80,63 +90,11 @@ class CaptureMiddleware implements MiddlewareInterface
 
     /**
      * Decide whether this request is a countable event, and which one.
+     * Stack-specific — see the subclasses.
      *
      * @return array{type: string, path: ?string, discussion_id: ?int, search_query: ?string}|null
      */
-    protected function classify(ServerRequestInterface $request): ?array
-    {
-        $path = $request->getUri()->getPath();
-
-        // JSON:API traffic (SPA navigation).
-        if (str_contains($path, '/api/')) {
-            // Discussion opened via SPA navigation.
-            if (preg_match('#/api/discussions/(\d+)$#', $path, $m)) {
-                return [
-                    'type' => BufferedEvent::TYPE_VIEW,
-                    'path' => '/d/' . $m[1],
-                    'discussion_id' => (int) $m[1],
-                    'search_query' => null,
-                ];
-            }
-
-            // A search: the discussion list filtered by a query string.
-            if (str_ends_with($path, '/api/discussions')) {
-                $q = (string) ($request->getQueryParams()['filter']['q'] ?? '');
-
-                if ($q !== '') {
-                    return [
-                        'type' => BufferedEvent::TYPE_SEARCH,
-                        'path' => null,
-                        'discussion_id' => null,
-                        'search_query' => mb_substr($q, 0, 191),
-                    ];
-                }
-            }
-
-            return null;
-        }
-
-        // Full page loads on the forum stack: count document requests only.
-        $accept = $request->getHeaderLine('Accept');
-
-        if ($accept !== '' && !str_contains($accept, 'text/html') && !str_contains($accept, '*/*')) {
-            return null;
-        }
-
-        $discussionId = null;
-
-        if (preg_match('#/d/(\d+)#', $path, $m)) {
-            $discussionId = (int) $m[1];
-            $path = '/d/' . $m[1];
-        }
-
-        return [
-            'type' => BufferedEvent::TYPE_VIEW,
-            'path' => mb_substr($path, 0, 191) ?: '/',
-            'discussion_id' => $discussionId,
-            'search_query' => null,
-        ];
-    }
+    abstract protected function classify(ServerRequestInterface $request): ?array;
 
     protected function isBot(string $ua): bool
     {

@@ -15,14 +15,17 @@ use LinkRobins\Birdseye\Job\SyncBatchJob;
  */
 class SyncCommand extends AbstractCommand
 {
-    protected $signature = 'birdseye:sync';
-
-    protected $description = 'Push buffered analytics events for processing (or roll up locally when unkeyed) and prune the buffer';
-
     public function __construct(
         protected Dispatcher $bus
     ) {
         parent::__construct();
+    }
+
+    protected function configure(): void
+    {
+        $this
+            ->setName('birdseye:sync')
+            ->setDescription('Push buffered analytics events for processing (or roll up locally when unkeyed) and prune the buffer');
     }
 
     protected function fire(): int

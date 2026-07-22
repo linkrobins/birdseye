@@ -5,7 +5,8 @@ use Flarum\Post\Event\Posted;
 use Flarum\User\Event\Registered;
 use LinkRobins\Birdseye\Api\StatsHandler;
 use LinkRobins\Birdseye\Api\WorldMapHandler;
-use LinkRobins\Birdseye\Capture\CaptureMiddleware;
+use LinkRobins\Birdseye\Capture\ApiCaptureMiddleware;
+use LinkRobins\Birdseye\Capture\ForumCaptureMiddleware;
 use LinkRobins\Birdseye\Console\SyncCommand;
 use LinkRobins\Birdseye\Listener\RecordPosted;
 use LinkRobins\Birdseye\Listener\RecordRegistered;
@@ -22,11 +23,14 @@ return [
 
     new Extend\Locales(__DIR__ . '/locale'),
 
-    // Capture runs on both stacks: 'forum' sees full page loads, 'api' sees
-    // the SPA's JSON:API navigation (discussion show, search). Capture is
-    // best-effort by contract — it must never break a request.
-    (new Extend\Middleware('forum'))->add(CaptureMiddleware::class),
-    (new Extend\Middleware('api'))->add(CaptureMiddleware::class),
+    // Capture: 'forum' sees full page loads, 'api' sees the SPA's JSON:API
+    // navigation (discussion show, search). Distinct classes per stack —
+    // internal ApiClient subrequests inherit the parent's headers, so the
+    // stack + path prefix are the only reliable discriminators (see
+    // CaptureMiddleware). Capture is best-effort by contract — it must
+    // never break a request.
+    (new Extend\Middleware('forum'))->add(ForumCaptureMiddleware::class),
+    (new Extend\Middleware('api'))->add(ApiCaptureMiddleware::class),
 
     (new Extend\Event())
         ->listen(Posted::class, RecordPosted::class)
