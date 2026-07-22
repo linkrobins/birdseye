@@ -23,6 +23,12 @@ app.initializers.add('linkrobins-birdseye', () => {
       label: app.translator.trans('linkrobins-birdseye.admin.settings.geo_ip_prefix_label'),
       help: app.translator.trans('linkrobins-birdseye.admin.settings.geo_ip_prefix_help'),
     })
+    .registerSetting({
+      setting: 'linkrobins-birdseye.weekly_digest',
+      type: 'switch',
+      label: app.translator.trans('linkrobins-birdseye.admin.settings.weekly_digest_label'),
+      help: app.translator.trans('linkrobins-birdseye.admin.settings.weekly_digest_help'),
+    })
     // The dashboard renders on the same page, beneath the settings form.
     .registerSetting(() => m(BirdseyeDashboard), -10)
     // Lets non-admin groups open the dashboard from the forum's session

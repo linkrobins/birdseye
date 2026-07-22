@@ -150,6 +150,28 @@
     }
   }
 
+  // "Today so far" strip: inline live counts from the buffer.
+  &-todayStats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 32px;
+  }
+
+  &-todayValue {
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  &-todayLabel {
+    color: var(--muted-color);
+    font-size: 12px;
+  }
+
+  &-note {
+    margin: 8px 0 0;
+    font-size: 12px;
+  }
+
   &-row {
     position: relative;
     display: flex;

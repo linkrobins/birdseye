@@ -26,6 +26,29 @@ interface RangeBlock {
   devices: ListRow[];
   locations: ListRow[];
   searches: ListRow[];
+  /** null when the tags extension isn't installed — the card is dropped. */
+  tags: ListRow[] | null;
+}
+
+interface TodayBlock {
+  visits: number;
+  pageviews: number;
+  posts: number;
+  registrations: number;
+}
+
+interface ActivationRow {
+  week: string;
+  joined: number;
+  converted: number;
+  pct: number | null;
+}
+
+interface StatsPayload {
+  ranges: Record<string, RangeBlock>;
+  today: TodayBlock;
+  activation: ActivationRow[];
+  unanswered: ListRow[];
 }
 
 export interface BirdseyeDashboardAttrs extends ComponentAttrs {
@@ -42,6 +65,9 @@ export interface BirdseyeDashboardAttrs extends ComponentAttrs {
 export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs> {
   loading = true;
   ranges: Record<string, RangeBlock> | null = null;
+  today: TodayBlock | null = null;
+  activation: ActivationRow[] = [];
+  unanswered: ListRow[] = [];
   range = '30d';
   mapMarkup: string | null = null;
 
@@ -51,9 +77,12 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
     const api = app.forum.attribute('apiUrl');
 
     app
-      .request<{ ranges: Record<string, RangeBlock> }>({ method: 'GET', url: `${api}/birdseye/stats` })
+      .request<StatsPayload>({ method: 'GET', url: `${api}/birdseye/stats` })
       .then((data) => {
         this.ranges = data.ranges;
+        this.today = data.today;
+        this.activation = data.activation || [];
+        this.unanswered = data.unanswered || [];
       })
       .finally(() => {
         this.loading = false;
@@ -115,15 +144,20 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
         this.tile(trans('new_members'), String(t.registrations)),
       ]),
 
+      this.todayStrip(),
+
       this.chart(block),
 
       m('.BirdseyeDashboard-lists', [
         this.list(trans('top_pages'), block.pages, (l) => l || '/'),
         this.list(trans('top_discussions'), block.discussions, (l) => l),
+        block.tags === null ? null : this.list(trans('tags'), block.tags, (l) => l),
+        this.list(trans('unanswered'), this.unanswered, (l) => l, trans('unanswered_note')),
         this.list(trans('sources'), block.sources, (l) => l || trans('direct')),
         this.list(trans('searches'), block.searches, (l) => l),
         this.list(trans('devices'), block.devices, (l) => (l ? l.charAt(0).toUpperCase() + l.slice(1) : trans('unknown'))),
         this.list(trans('countries'), block.locations.slice(0, 8), countryName),
+        this.activationCard(),
       ]),
 
       m('.BirdseyeDashboard-card', [
@@ -164,11 +198,11 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
     ]);
   }
 
-  list(title: Mithril.Children, rows: ListRow[], labeller: (l: string) => string) {
+  list(title: Mithril.Children, rows: ListRow[], labeller: (l: string) => string, note?: Mithril.Children) {
     const max = Math.max(...rows.map((r) => r.visits), 1);
 
     return m('.BirdseyeDashboard-card', [
-      m('.BirdseyeDashboard-cardTitle', title),
+      m('.BirdseyeDashboard-cardTitle', [title, note ? m('span.BirdseyeDashboard-span', note) : null]),
       rows.length
         ? rows.map((r) =>
             m('.BirdseyeDashboard-row', [
@@ -178,6 +212,52 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
             ])
           )
         : m('p.helpText', trans('no_data')),
+    ]);
+  }
+
+  /**
+   * Today's counts, straight from the capture buffer — the rollups above
+   * only cover finished days, so this is the "is it working right now" row.
+   */
+  todayStrip() {
+    const d = this.today;
+
+    if (!d) return null;
+
+    const stat = (label: Mithril.Children, value: number) =>
+      m('.BirdseyeDashboard-todayStat', [m('.BirdseyeDashboard-todayValue', String(value)), m('.BirdseyeDashboard-todayLabel', label)]);
+
+    return m('.BirdseyeDashboard-card', [
+      m('.BirdseyeDashboard-cardTitle', [trans('today'), m('span.BirdseyeDashboard-span', trans('today_note'))]),
+      m('.BirdseyeDashboard-todayStats', [
+        stat(trans('visitors'), d.visits),
+        stat(trans('pageviews'), d.pageviews),
+        stat(trans('posts'), d.posts),
+        stat(trans('new_members'), d.registrations),
+      ]),
+    ]);
+  }
+
+  /**
+   * Weekly lurker→poster cohorts: bar = share of that week's new members
+   * who posted within 7 days of joining.
+   */
+  activationCard() {
+    const rows = this.activation;
+    const anyJoined = rows.some((w) => w.joined > 0);
+
+    return m('.BirdseyeDashboard-card', [
+      m('.BirdseyeDashboard-cardTitle', trans('activation')),
+      anyJoined
+        ? rows.map((w) =>
+            m('.BirdseyeDashboard-row', [
+              m('.BirdseyeDashboard-rowBar', { style: { width: `${Math.round((w.pct || 0) * 100)}%` } }),
+              m('span.BirdseyeDashboard-rowLabel', `${shortDate(w.week)} · ${w.joined} ${transText('joined_word')}`),
+              m('span.BirdseyeDashboard-rowValue', w.pct === null ? '—' : `${Math.round(w.pct * 100)}%`),
+            ])
+          )
+        : m('p.helpText', trans('no_data')),
+      anyJoined ? m('p.helpText.BirdseyeDashboard-note', trans('activation_help')) : null,
     ]);
   }
 

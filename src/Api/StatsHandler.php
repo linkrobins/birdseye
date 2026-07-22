@@ -28,6 +28,8 @@ class StatsHandler implements RequestHandlerInterface
         $actor->assertRegistered();
         $actor->assertPermission($actor->hasPermission(Permissions::VIEW_STATS));
 
-        return new JsonResponse($this->stats->build());
+        // The actor scopes what titles the payload may name (discussions,
+        // restricted-tag filtering) — see StatsBuilder.
+        return new JsonResponse($this->stats->build($actor));
     }
 }

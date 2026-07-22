@@ -25,6 +25,16 @@ linkrobins-birdseye:
       no_data: No data yet.
       visitors_word: visitors
       no_visitors: No visitors
+      today: Today so far
+      today_note: live — becomes final when the day closes
+      tags: Top tags
+      unanswered: Needs a reply
+      unanswered_note: viewed this week, no replies
+      activation: New-member activation
+      activation_help: >-
+        Share of new members who post within 7 days of joining. The newest
+        weeks are still maturing.
+      joined_word: joined
   forum:
     session_menu:
       analytics_button: Analytics
@@ -46,3 +56,22 @@ linkrobins-birdseye:
         (never the full address) in the 72-hour buffer so the processor can
         resolve visitor countries. Turn off to skip country stats on
         non-proxied traffic.
+      weekly_digest_label: Weekly email digest
+      weekly_digest_help: >-
+        Every Monday, email administrators a summary of last week — visitors,
+        pageviews, posts, new members, top discussion, and top search. Sent
+        by your forum's own mailer; nothing leaves the server.
+  # Server-side only (not shipped to any JS bundle).
+  email:
+    digest:
+      subject: "{forum} last week: {visitors} visitors"
+      heading: "{forum} — week of {start}–{end}"
+      visitors_line: "Visitors: {count} ({change})"
+      pageviews_line: "Pageviews: {count} ({change})"
+      posts_line: "Posts: {count} ({change})"
+      registrations_line: "New members: {count} ({change})"
+      top_discussion_line: "Top discussion: \"{title}\" ({views} views)"
+      top_search_line: "Top search: \"{query}\" ({count} searches)"
+      footer: >-
+        — Link Robins Birdseye. Turn this digest off any time under Admin →
+        Birdseye.

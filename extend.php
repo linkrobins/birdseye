@@ -9,6 +9,7 @@ use LinkRobins\Birdseye\Api\StatsHandler;
 use LinkRobins\Birdseye\Api\WorldMapHandler;
 use LinkRobins\Birdseye\Capture\ApiCaptureMiddleware;
 use LinkRobins\Birdseye\Capture\ForumCaptureMiddleware;
+use LinkRobins\Birdseye\Console\DigestCommand;
 use LinkRobins\Birdseye\Console\SyncCommand;
 use LinkRobins\Birdseye\Listener\RecordPosted;
 use LinkRobins\Birdseye\Listener\RecordRegistered;
@@ -55,6 +56,12 @@ return [
         // installs; the command is idempotent either way.
         ->schedule(SyncCommand::class, function ($event) {
             $event->hourly()->onOneServer()->withoutOverlapping();
+        })
+        ->command(DigestCommand::class)
+        // Monday morning UTC; the command's own sent-marker makes a second
+        // firing (or a multi-node race) a no-op.
+        ->schedule(DigestCommand::class, function ($event) {
+            $event->weeklyOn(1, '7:30')->onOneServer()->withoutOverlapping();
         }),
 
     (new Extend\Settings())
@@ -68,6 +75,9 @@ return [
         // counts locally and never phones out.
         ->default('linkrobins-birdseye.endpoint', 'https://linkrobins.com/api/birdseye/process')
         ->default('linkrobins-birdseye.license_key', '')
+        // Monday email to admins summarizing last week's rollups. Local
+        // only; skips silently when the week has no data.
+        ->default('linkrobins-birdseye.weekly_digest', true)
         // Store an anonymized IP prefix (/24 v4, /48 v6) in the 72h buffer so
         // the processor can resolve visitor country when the forum is not
         // behind a proxy that supplies a country header. Prefix is discarded
