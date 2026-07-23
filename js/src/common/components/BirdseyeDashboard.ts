@@ -8,6 +8,10 @@ import type Mithril from 'mithril';
 interface ListRow {
   label: string;
   visits: number;
+  /** Forum-relative link to the content this row describes (top pages,
+   *  discussions, tags, searches, needs-a-reply). Absent when there's
+   *  nothing to open (sources, devices, countries). */
+  url?: string;
 }
 
 interface RangeBlock {
@@ -69,6 +73,9 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
   activation: ActivationRow[] = [];
   unanswered: ListRow[] = [];
   range = '30d';
+  /** How the categorical breakdown cards render — ranked bars or a pie/donut.
+   *  Toggled from the header; applies to every list at once. */
+  viewMode: 'bars' | 'pie' = 'bars';
   mapMarkup: string | null = null;
 
   oninit(vnode: Mithril.Vnode) {
@@ -120,19 +127,35 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
     return m('.BirdseyeDashboard', [
       m('.BirdseyeDashboard-header', [
         this.attrs.hideTitle ? m('span') : m('h3', trans('title')),
-        m(
-          '.BirdseyeDashboard-ranges',
-          ['7d', '30d'].map((r) =>
-            m(
-              'button.Button.Button--size-sm',
-              {
-                className: this.range === r ? 'Button--primary' : '',
-                onclick: () => (this.range = r),
-              },
-              trans(r === '7d' ? 'range_7d' : 'range_30d')
+        m('.BirdseyeDashboard-controls', [
+          // Bars ⇄ pie: flips every categorical breakdown card at once.
+          m(
+            '.BirdseyeDashboard-toggle',
+            (['bars', 'pie'] as const).map((mode) =>
+              m(
+                'button.Button.Button--size-sm',
+                {
+                  className: this.viewMode === mode ? 'Button--primary' : '',
+                  onclick: () => (this.viewMode = mode),
+                },
+                trans(mode === 'bars' ? 'view_bars' : 'view_pie')
+              )
             )
-          )
-        ),
+          ),
+          m(
+            '.BirdseyeDashboard-ranges',
+            ['7d', '30d'].map((r) =>
+              m(
+                'button.Button.Button--size-sm',
+                {
+                  className: this.range === r ? 'Button--primary' : '',
+                  onclick: () => (this.range = r),
+                },
+                trans(r === '7d' ? 'range_7d' : 'range_30d')
+              )
+            )
+          ),
+        ]),
       ]),
 
       m('.BirdseyeDashboard-tiles', [
@@ -149,14 +172,14 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
       this.chart(block),
 
       m('.BirdseyeDashboard-lists', [
-        this.list(trans('top_pages'), block.pages, (l) => l || '/'),
-        this.list(trans('top_discussions'), block.discussions, (l) => l),
-        block.tags === null ? null : this.list(trans('tags'), block.tags, (l) => l),
-        this.list(trans('unanswered'), this.unanswered, (l) => l, trans('unanswered_note')),
-        this.list(trans('sources'), block.sources, (l) => l || trans('direct')),
-        this.list(trans('searches'), block.searches, (l) => l),
-        this.list(trans('devices'), block.devices, (l) => (l ? l.charAt(0).toUpperCase() + l.slice(1) : trans('unknown'))),
-        this.list(trans('countries'), block.locations.slice(0, 8), countryName),
+        this.card(trans('top_pages'), block.pages, (l) => l || '/'),
+        this.card(trans('top_discussions'), block.discussions, (l) => l),
+        block.tags === null ? null : this.card(trans('tags'), block.tags, (l) => l),
+        this.card(trans('unanswered'), this.unanswered, (l) => l, trans('unanswered_note')),
+        this.card(trans('sources'), block.sources, (l) => l || transText('direct')),
+        this.card(trans('searches'), block.searches, (l) => l),
+        this.card(trans('devices'), block.devices, (l) => (l ? l.charAt(0).toUpperCase() + l.slice(1) : transText('unknown'))),
+        this.card(trans('countries'), block.locations.slice(0, 8), countryName),
         this.activationCard(),
       ]),
 
@@ -198,7 +221,27 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
     ]);
   }
 
-  list(title: Mithril.Children, rows: ListRow[], labeller: (l: string) => string, note?: Mithril.Children) {
+  /** Render a categorical breakdown as ranked bars or as a pie, per the
+   *  header toggle. Same data, same links — only the shape changes. */
+  card(title: Mithril.Children, rows: ListRow[], labeller: (l: string) => Mithril.Children, note?: Mithril.Children) {
+    return this.viewMode === 'pie' ? this.donut(title, rows, labeller, note) : this.list(title, rows, labeller, note);
+  }
+
+  /** Wrap a row label in a link to the content it describes, when the server
+   *  supplied a target. Opens in a new tab so drilling into a discussion or
+   *  tag never throws away the dashboard you were reading.
+   *
+   *  Security: `url` for a "page" row is a captured request path, so treat it
+   *  as untrusted. Only link a genuine same-origin absolute path ("/d/5",
+   *  "/?q=x") — never a scheme or a protocol-relative "//host" that could
+   *  navigate off-site if the forum base ever resolved empty. */
+  maybeLink(content: Mithril.Children, url?: string): Mithril.Children {
+    if (!url || !/^\/(?:$|[^/].*)$/.test(url)) return content;
+    const base = (app.forum.attribute('baseUrl') as string) || '';
+    return m('a', { href: base + url, target: '_blank', rel: 'noopener' }, content);
+  }
+
+  list(title: Mithril.Children, rows: ListRow[], labeller: (l: string) => Mithril.Children, note?: Mithril.Children) {
     const max = Math.max(...rows.map((r) => r.visits), 1);
 
     return m('.BirdseyeDashboard-card', [
@@ -207,11 +250,81 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
         ? rows.map((r) =>
             m('.BirdseyeDashboard-row', [
               m('.BirdseyeDashboard-rowBar', { style: { width: `${Math.round((r.visits / max) * 100)}%` } }),
-              m('span.BirdseyeDashboard-rowLabel', labeller(r.label)),
+              m('span.BirdseyeDashboard-rowLabel', this.maybeLink(labeller(r.label), r.url)),
               m('span.BirdseyeDashboard-rowValue', String(r.visits)),
             ])
           )
         : m('p.helpText', trans('no_data')),
+    ]);
+  }
+
+  /**
+   * The pie view of a breakdown: a donut with a value/percentage legend, the
+   * pie option asked for on discuss.flarum.org. Any list can render this way
+   * via the header toggle; long-tail rankings simply fold everything past the
+   * palette into a single "Other" wedge so the ring stays readable. Pure CSS:
+   * a conic-gradient ring with a punched-out centre holding the total. Legend
+   * labels stay linked wherever the bar list would be.
+   */
+  donut(title: Mithril.Children, rows: ListRow[], labeller: (l: string) => Mithril.Children, note?: Mithril.Children) {
+    const cardTitle = m('.BirdseyeDashboard-cardTitle', [title, note ? m('span.BirdseyeDashboard-span', note) : null]);
+    const present = rows.filter((r) => r.visits > 0);
+    const total = present.reduce((s, r) => s + r.visits, 0);
+
+    if (!total) {
+      return m('.BirdseyeDashboard-card', [cardTitle, m('p.helpText', trans('no_data'))]);
+    }
+
+    // Keep the largest slices distinct; fold the rest into one grey wedge so
+    // the ring never fragments into unreadable slivers.
+    const max = DONUT_PALETTE.length;
+    let head = present;
+    let otherTotal = 0;
+    if (present.length > max) {
+      head = present.slice(0, max - 1);
+      otherTotal = present.slice(max - 1).reduce((s, r) => s + r.visits, 0);
+    }
+
+    const slices: { label: Mithril.Children; visits: number; color: string; url?: string }[] = head.map((r, i) => ({
+      label: labeller(r.label),
+      visits: r.visits,
+      color: DONUT_PALETTE[i],
+      url: r.url,
+    }));
+    if (otherTotal > 0) slices.push({ label: transText('other'), visits: otherTotal, color: DONUT_OTHER });
+
+    // Cumulative conic-gradient stops. Each slice paints from where the last
+    // one ended to its running total, as a percentage of the whole.
+    let acc = 0;
+    const stops = slices
+      .map((s) => {
+        const start = (acc / total) * 100;
+        acc += s.visits;
+        const end = (acc / total) * 100;
+        return `${s.color} ${start}% ${end}%`;
+      })
+      .join(', ');
+
+    return m('.BirdseyeDashboard-card', [
+      cardTitle,
+      m('.BirdseyeDashboard-donutWrap', [
+        m('.BirdseyeDashboard-donut', { style: { background: `conic-gradient(${stops})` } }, [
+          m('.BirdseyeDashboard-donutHole', [
+            m('.BirdseyeDashboard-donutTotal', String(total)),
+            m('.BirdseyeDashboard-donutTotalLabel', transText('visitors_word')),
+          ]),
+        ]),
+        m(
+          '.BirdseyeDashboard-legend',
+          slices.map((s) =>
+            m('.BirdseyeDashboard-legendRow', [
+              m('span.BirdseyeDashboard-legendSwatch', { style: { background: s.color } }),
+              m('span.BirdseyeDashboard-legendLabel', this.maybeLink(s.label, s.url)),
+              m('span.BirdseyeDashboard-legendValue', `${s.visits} · ${Math.round((s.visits / total) * 100)}%`),
+            ])
+          )
+        ),
+      ]),
     ]);
   }
 
@@ -332,6 +445,12 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
     });
   }
 }
+
+// Categorical donut palette — the brand cyan leads, then hues chosen to stay
+// distinct on both the light and dark Flarum themes. Overflow slices fold into
+// the grey "Other" wedge.
+const DONUT_PALETTE = ['#1ec3d6', '#6c8cff', '#ffb020', '#f2617a', '#34c759', '#a06cff'];
+const DONUT_OTHER = '#8a97a6';
 
 // lib.* keys ship to both frontends (admin.*/forum.* are filtered per-bundle).
 function trans(key: string): Mithril.Children {

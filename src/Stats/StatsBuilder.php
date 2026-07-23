@@ -134,7 +134,7 @@ class StatsBuilder
             $sums = array_slice($sums, 0, $cap, true);
 
             $block[$key] = array_map(
-                fn ($label, $visits) => ['label' => (string) $label, 'visits' => $visits],
+                fn ($label, $visits) => $this->listRow($metric, (string) $label, $visits),
                 array_keys($sums),
                 array_values($sums)
             );
@@ -146,6 +146,35 @@ class StatsBuilder
         $block['tags'] = $this->tagViews($discussionSums);
 
         return $block;
+    }
+
+    /**
+     * One breakdown row, with a forum-relative link to the content it counts
+     * where one exists so the dashboard can offer a click-through. Pages are
+     * already a path; searches rebuild the query URL. Sources/devices/
+     * countries have nowhere meaningful to go, so they stay plain.
+     *
+     * @return array{label: string, visits: int, url?: string}
+     */
+    protected function listRow(string $metric, string $label, int $visits): array
+    {
+        $row = ['label' => $label, 'visits' => $visits];
+
+        $url = match ($metric) {
+            // A page key is a captured request path. Only offer it as a link
+            // when it's a plain same-origin absolute path — never a protocol-
+            // relative "//host" (the frontend refuses those too, belt and
+            // braces). Empty means the forum root.
+            'page' => $label === '' ? '/' : (preg_match('#^/(?:[^/].*)?$#', $label) ? $label : null),
+            'search' => '/?q=' . rawurlencode($label),
+            default => null,
+        };
+
+        if ($url !== null) {
+            $row['url'] = $url;
+        }
+
+        return $row;
     }
 
     /**
@@ -297,7 +326,7 @@ class StatsBuilder
             // Invisible-to-viewer (or deleted) discussions drop out rather
             // than leak a title or show an unactionable "#id" row.
             if (isset($titles[$id])) {
-                $out[] = ['label' => (string) $titles[$id], 'visits' => $visits];
+                $out[] = ['label' => (string) $titles[$id], 'visits' => $visits, 'url' => '/d/' . (int) $id];
             }
         }
 
@@ -332,23 +361,29 @@ class StatsBuilder
             ->join('tags', 'tags.id', '=', 'discussion_tag.tag_id')
             ->whereIn('discussion_tag.discussion_id', $ids)
             ->where('tags.is_restricted', false)
-            ->get(['discussion_tag.discussion_id', 'tags.name']);
+            ->get(['discussion_tag.discussion_id', 'tags.name', 'tags.slug']);
 
         $sums = [];
+        $slugs = [];
 
         foreach ($rows as $row) {
             $views = $discussionSums[$row->discussion_id] ?? $discussionSums[(string) $row->discussion_id] ?? 0;
             $sums[$row->name] = ($sums[$row->name] ?? 0) + $views;
+            $slugs[$row->name] = $row->slug;
         }
 
         arsort($sums);
         $sums = array_slice($sums, 0, 8, true);
 
-        return array_map(
-            fn ($label, $visits) => ['label' => (string) $label, 'visits' => $visits],
-            array_keys($sums),
-            array_values($sums)
-        );
+        return array_map(function ($label, $visits) use ($slugs) {
+            $row = ['label' => (string) $label, 'visits' => $visits];
+
+            if (!empty($slugs[$label])) {
+                $row['url'] = '/t/' . $slugs[$label];
+            }
+
+            return $row;
+        }, array_keys($sums), array_values($sums));
     }
 
     /**
@@ -372,9 +407,20 @@ class StatsBuilder
             ->whereIn('id', array_map(fn ($r) => (int) $r['label'], $rows))
             ->pluck('title', 'id');
 
-        return array_map(fn ($r) => [
-            'label' => (string) ($titles[(int) $r['label']] ?? "#{$r['label']}"),
-            'visits' => $r['visits'],
-        ], $rows);
+        return array_map(function ($r) use ($titles) {
+            $id = (int) $r['label'];
+            $row = [
+                'label' => (string) ($titles[$id] ?? "#{$r['label']}"),
+                'visits' => $r['visits'],
+            ];
+
+            // Only link discussions the viewer may actually open; the "#id"
+            // fallback for hidden/deleted rows stays unlinked.
+            if (isset($titles[$id])) {
+                $row['url'] = '/d/' . $id;
+            }
+
+            return $row;
+        }, $rows);
     }
 }

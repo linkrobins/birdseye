@@ -24,6 +24,21 @@
     gap: 6px;
   }
 
+  // Header right-hand controls: the bars/pie toggle sits beside the range
+  // switcher, wrapping under it on narrow widths.
+  &-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  &-toggle {
+    display: flex;
+    gap: 6px;
+  }
+
   // One row of six, filling the full container width (auto-fill would keep
   // phantom empty tracks and leave dead space on the right).
   &-tiles {
@@ -200,9 +215,96 @@
     white-space: nowrap;
   }
 
+  // Linked breakdown rows (top pages, discussions, tags, searches, needs a
+  // reply) — read as body text until hovered, then reveal as a link.
+  &-rowLabel a,
+  &-legendLabel a {
+    color: inherit;
+    text-decoration: none;
+
+    &:hover {
+      color: @birdseye-accent;
+      text-decoration: underline;
+    }
+  }
+
   &-rowValue {
     position: relative;
     font-weight: 600;
+  }
+
+  // Donut breakdown (devices, sources): a conic-gradient ring beside a
+  // value/percentage legend.
+  &-donutWrap {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 4px;
+  }
+
+  &-donut {
+    position: relative;
+    flex: 0 0 auto;
+    width: 104px;
+    height: 104px;
+    border-radius: 50%;
+  }
+
+  &-donutHole {
+    position: absolute;
+    inset: 21px;
+    border-radius: 50%;
+    background: var(--body-bg-light, var(--body-bg));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    line-height: 1;
+  }
+
+  &-donutTotal {
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  &-donutTotalLabel {
+    font-size: 10px;
+    color: var(--muted-color);
+    margin-top: 3px;
+  }
+
+  &-legend {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  &-legendRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+    font-size: 13px;
+  }
+
+  &-legendSwatch {
+    flex: 0 0 auto;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+  }
+
+  &-legendLabel {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &-legendValue {
+    flex: 0 0 auto;
+    color: var(--muted-color);
+    font-variant-numeric: tabular-nums;
   }
 
   &-map svg {
