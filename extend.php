@@ -4,6 +4,7 @@ use Flarum\Api\Resource\ForumResource;
 use Flarum\Api\Serializer\ForumSerializer;
 use Flarum\Extend;
 use Flarum\Post\Event\Posted;
+use Flarum\Settings\Event\Saved;
 use Flarum\User\Event\Registered;
 use LinkRobins\Birdseye\Api\ForumFields;
 use LinkRobins\Birdseye\Api\StatsHandler;
@@ -14,6 +15,7 @@ use LinkRobins\Birdseye\Console\DigestCommand;
 use LinkRobins\Birdseye\Console\SyncCommand;
 use LinkRobins\Birdseye\Listener\RecordPosted;
 use LinkRobins\Birdseye\Listener\RecordRegistered;
+use LinkRobins\Birdseye\Listener\SendHelloOnKeyChange;
 use LinkRobins\Birdseye\Permissions;
 
 // The forum field telling the frontend whether to offer the Analytics entry
@@ -68,7 +70,11 @@ return [
 
     (new Extend\Event())
         ->listen(Posted::class, RecordPosted::class)
-        ->listen(Registered::class, RecordRegistered::class),
+        ->listen(Registered::class, RecordRegistered::class)
+        // Saving a license key fires an immediate first-contact check-in so
+        // the key binds (and shows as connected on the customer dashboard)
+        // within seconds instead of after the first complete-day sync.
+        ->listen(Saved::class, SendHelloOnKeyChange::class),
 
     (new Extend\Console())
         ->command(SyncCommand::class)
@@ -102,5 +108,10 @@ return [
         // the processor can resolve visitor country when the forum is not
         // behind a proxy that supplies a country header. Prefix is discarded
         // with the buffer row; full IPs are never written anywhere.
-        ->default('linkrobins-birdseye.geo_ip_prefix', true),
+        ->default('linkrobins-birdseye.geo_ip_prefix', true)
+        // Which trusted-proxy header carries the visitor's country code.
+        // Defaults to Cloudflare's. The header is trusted as-is (any client
+        // NOT behind such a proxy can forge it), so operators without one
+        // should blank this and rely on geo_ip_prefix instead.
+        ->default('linkrobins-birdseye.country_header', 'CF-IPCountry'),
 ];

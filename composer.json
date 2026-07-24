@@ -15,7 +15,8 @@
     },
     "require": {
         "php": ">=8.0",
-        "flarum/core": ">=1.8.0 <3.0.0"
+        "flarum/core": ">=1.8.0 <3.0.0",
+        "guzzlehttp/guzzle": "^7.0"
     },
     "require-dev": {
         "flarum/testing": "^2.0",
@@ -58,8 +59,8 @@
             "category": "feature",
             "icon": {
                 "name": "fas fa-chart-line",
-                "backgroundColor": "#0b1d26",
-                "color": "#6fd7e4"
+                "backgroundColor": "#1a2535",
+                "color": "#07adcc"
             }
         },
         "flarum-cli": {

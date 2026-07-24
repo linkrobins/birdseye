@@ -33,6 +33,13 @@ window.app.initializers.add('linkrobins-birdseye', () => {
       help: app.translator.trans('linkrobins-birdseye.admin.settings.geo_ip_prefix_help'),
     })
     .registerSetting({
+      setting: 'linkrobins-birdseye.country_header',
+      type: 'text',
+      placeholder: 'CF-IPCountry',
+      label: app.translator.trans('linkrobins-birdseye.admin.settings.country_header_label'),
+      help: app.translator.trans('linkrobins-birdseye.admin.settings.country_header_help'),
+    })
+    .registerSetting({
       setting: 'linkrobins-birdseye.weekly_digest',
       type: 'switch',
       label: app.translator.trans('linkrobins-birdseye.admin.settings.weekly_digest_label'),

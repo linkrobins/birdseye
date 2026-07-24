@@ -23,7 +23,10 @@ that's the permanent history, a few kilobytes per month.
   bounce rate, session length, top pages and discussions, referrer sources,
   devices, countries (world map included) — and returns the results to be
   stored **in your database**. We keep nothing. Cancel anytime; every stat
-  you've collected stays with you.
+  you've collected stays with you. Saving your key checks in with the
+  processor right away, so your linkrobins.com dashboard shows the forum as
+  connected within seconds; the first full-picture stats follow once the
+  first complete day rolls over.
 
 ## Beyond the numbers
 
@@ -47,7 +50,7 @@ Enable it in the admin panel. That's it — stats begin collecting immediately.
 
 ## Requirements
 
-- Flarum `^2.0`, PHP `^8.3`
+- Flarum `1.8` or `2.x`, PHP `>= 8.0`
 - The [scheduler](https://docs.flarum.org/scheduler) must be running for
   daily rollups (`php flarum schedule:run` via cron).
 
@@ -55,11 +58,16 @@ Enable it in the admin panel. That's it — stats begin collecting immediately.
 
 - Visitor identity is `hash(secret + date + IP + user agent)`, truncated;
   the salt rotates daily so visitors cannot be tracked across days.
-- Country detection uses your proxy's country header (e.g. Cloudflare) when
-  available. Otherwise, an **anonymized IP prefix** (/24 for IPv4, /48 for
-  IPv6 — never the full address) is kept in the 72-hour buffer solely for
-  country lookup during processing, then discarded. This can be disabled in
-  settings, and no full IP is written to disk either way.
+- Country detection uses a trusted proxy country header when one is
+  configured — Cloudflare's `CF-IPCountry` by default; point the *Trusted
+  country header* setting at e.g. `X-Country` if nginx-geoip supplies it.
+  The header is trusted as-is, so if your forum is **not** behind such a
+  proxy, blank the setting (a client talking to your server directly could
+  otherwise forge its country). Without a header, an **anonymized IP
+  prefix** (/24 for IPv4, /48 for IPv6 — never the full address) is kept in
+  the 72-hour buffer solely for country lookup during processing, then
+  discarded. This can be disabled in settings, and no full IP is written to
+  disk either way.
 - Bounce rate and visit duration are measured log-style (server-side), which
   runs slightly conservative compared to script-based trackers — the cost of
   shipping no JavaScript at all.

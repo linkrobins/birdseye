@@ -117,10 +117,22 @@ abstract class CaptureMiddleware implements MiddlewareInterface
         return filter_var($ip, FILTER_VALIDATE_IP) !== false ? $ip : null;
     }
 
-    /** Country from a trusted-proxy header when one is present (Cloudflare). */
+    /**
+     * Country from the configured trusted-proxy header (default Cloudflare's
+     * CF-IPCountry; nginx-geoip users can point it at X-Country etc.). The
+     * header is trusted as-is: a client NOT routed through such a proxy can
+     * forge it, so operators without one should blank the setting and rely
+     * on geo_ip_prefix — analytics-only data either way.
+     */
     protected function country(ServerRequestInterface $request): ?string
     {
-        $code = strtoupper($request->getHeaderLine('CF-IPCountry'));
+        $header = trim((string) $this->settings->get('linkrobins-birdseye.country_header', 'CF-IPCountry'));
+
+        if ($header === '' || !preg_match('/^[A-Za-z0-9-]+$/', $header)) {
+            return null;
+        }
+
+        $code = strtoupper($request->getHeaderLine($header));
 
         return preg_match('/^[A-Z]{2}$/', $code) && $code !== 'XX' ? $code : null;
     }

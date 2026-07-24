@@ -3,8 +3,9 @@
 namespace LinkRobins\Birdseye\Stats;
 
 use Flarum\Discussion\Discussion;
+use Flarum\Extension\ExtensionManager;
+use Flarum\Post\Post;
 use Flarum\User\User;
-use Illuminate\Database\ConnectionInterface;
 use LinkRobins\Birdseye\Buffer\BufferedEvent;
 use LinkRobins\Birdseye\Rollup\Rollup;
 
@@ -40,8 +41,12 @@ class StatsBuilder
     /** Weekly cohorts shown on the activation card. */
     protected const ACTIVATION_WEEKS = 8;
 
+    /** Users per activation chunk; ACTIVATION_CAP bounds the whole scan. */
+    protected const ACTIVATION_CHUNK = 2000;
+    protected const ACTIVATION_CAP = 20000;
+
     public function __construct(
-        protected ConnectionInterface $db
+        protected ExtensionManager $extensions
     ) {
     }
 
@@ -222,44 +227,55 @@ class StatsBuilder
 
         $since = $weekStarts[0]->format('Y-m-d 00:00:00');
 
-        // One portable pass: each new user with their first-ever post time.
-        // Grouping by both selected non-aggregates keeps Postgres happy; the
-        // hard limit bounds pathological mass-signup forums (cohorts beyond
-        // it would be sampled, not silently wrong: rows arrive join-ordered).
-        // The table name inside a raw expression is not prefixed by the query
-        // builder (unlike ->table()/->join()), so prefix it by hand or the
-        // whole stats endpoint 500s on any install that uses a table prefix.
-        $prefix = $this->db->getTablePrefix();
-
-        $users = $this->db->table('users')
-            ->leftJoin('posts', 'posts.user_id', '=', 'users.id')
-            ->where('users.joined_at', '>=', $since)
-            ->groupBy('users.id', 'users.joined_at')
-            ->orderBy('users.joined_at')
-            ->limit(20000)
-            ->get(['users.id', 'users.joined_at', $this->db->raw("MIN({$prefix}posts.created_at) as first_post_at")]);
-
         $cohorts = [];
 
         foreach ($weekStarts as $start) {
             $cohorts[$start->format('Y-m-d')] = ['joined' => 0, 'converted' => 0];
         }
 
-        foreach ($users as $user) {
-            $joined = new \DateTimeImmutable((string) $user->joined_at, new \DateTimeZone('UTC'));
-            $week = $joined->modify('monday this week')->format('Y-m-d');
+        // Chunked so a mass-signup forum can't balloon PHP memory: users
+        // stream through a couple thousand at a time, with one grouped MIN()
+        // per chunk for their first-post times (bare column names only, so
+        // no table-prefix concerns — Eloquent prefixes the rest). Grouping by
+        // just user_id with a single aggregate keeps Postgres happy. The cap
+        // bounds pathological forums; cohorts beyond it are sampled (rows
+        // arrive id-ordered ≈ join-ordered), not silently wrong.
+        $processed = 0;
 
-            if (!isset($cohorts[$week])) {
-                continue;
-            }
+        User::query()
+            ->where('joined_at', '>=', $since)
+            ->select('id', 'joined_at')
+            ->chunkById(self::ACTIVATION_CHUNK, function ($users) use (&$cohorts, &$processed) {
+                $firstPosts = Post::query()
+                    ->whereIn('user_id', $users->pluck('id'))
+                    ->groupBy('user_id')
+                    ->selectRaw('user_id, MIN(created_at) as first_post_at')
+                    ->pluck('first_post_at', 'user_id');
 
-            $cohorts[$week]['joined']++;
+                foreach ($users as $user) {
+                    // Raw column strings (not casts) so the date math stays
+                    // byte-identical to what the database stores — UTC.
+                    $joined = new \DateTimeImmutable((string) $user->getRawOriginal('joined_at'), new \DateTimeZone('UTC'));
+                    $week = $joined->modify('monday this week')->format('Y-m-d');
 
-            if ($user->first_post_at !== null
-                && new \DateTimeImmutable((string) $user->first_post_at, new \DateTimeZone('UTC')) <= $joined->modify('+7 days')) {
-                $cohorts[$week]['converted']++;
-            }
-        }
+                    if (!isset($cohorts[$week])) {
+                        continue;
+                    }
+
+                    $cohorts[$week]['joined']++;
+
+                    $firstPost = $firstPosts[$user->id] ?? null;
+
+                    if ($firstPost !== null
+                        && new \DateTimeImmutable((string) $firstPost, new \DateTimeZone('UTC')) <= $joined->modify('+7 days')) {
+                        $cohorts[$week]['converted']++;
+                    }
+                }
+
+                $processed += $users->count();
+
+                return $processed < self::ACTIVATION_CAP;
+            });
 
         return array_map(fn ($week, $c) => [
             'week' => $week,
@@ -304,7 +320,7 @@ class StatsBuilder
 
         // type=comment excludes event posts (renames, tag changes) — those
         // are not replies; number>1 excludes the opening post itself.
-        $replied = $this->db->table('posts')
+        $replied = Post::query()
             ->whereIn('discussion_id', array_keys($views))
             ->where('created_at', '>=', $from . ' 00:00:00')
             ->where('type', 'comment')
@@ -341,7 +357,7 @@ class StatsBuilder
     /**
      * View counts aggregated by tag, from the discussion rollups joined to
      * the tags tables locally. Soft dependency: returns null (card hidden)
-     * when the tags extension isn't installed. Restricted tags are excluded
+     * unless the tags extension is enabled. Restricted tags are excluded
      * for every viewer — a permission-holding member must not learn a staff
      * area's name from an analytics card.
      *
@@ -350,7 +366,7 @@ class StatsBuilder
      */
     protected function tagViews(array $discussionSums): ?array
     {
-        if (!$this->db->getSchemaBuilder()->hasTable('tags')) {
+        if (!$this->extensions->isEnabled('flarum-tags')) {
             return null;
         }
 
@@ -362,10 +378,17 @@ class StatsBuilder
         // all the signal a top-8 tag ranking needs.
         $ids = array_slice(array_keys($discussionSums), 0, 500);
 
-        $rows = $this->db->table('discussion_tag')
+        // Through the Discussion builder (not the raw connection) so table
+        // prefixing and connection handling stay Eloquent's problem; no
+        // flarum/tags class is referenced, keeping the dependency soft.
+        // toBase() because these joined rows aren't Discussion models —
+        // they're (discussion_id, tag name, tag slug) tuples.
+        $rows = Discussion::query()
+            ->join('discussion_tag', 'discussion_tag.discussion_id', '=', 'discussions.id')
             ->join('tags', 'tags.id', '=', 'discussion_tag.tag_id')
             ->whereIn('discussion_tag.discussion_id', $ids)
             ->where('tags.is_restricted', false)
+            ->toBase()
             ->get(['discussion_tag.discussion_id', 'tags.name', 'tags.slug']);
 
         $sums = [];

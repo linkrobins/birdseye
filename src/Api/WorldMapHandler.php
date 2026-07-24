@@ -3,6 +3,7 @@
 namespace LinkRobins\Birdseye\Api;
 
 use Flarum\Http\RequestUtil;
+use Illuminate\Filesystem\Filesystem;
 use Laminas\Diactoros\Response;
 use LinkRobins\Birdseye\Permissions;
 use Psr\Http\Message\ResponseInterface;
@@ -17,6 +18,11 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 class WorldMapHandler implements RequestHandlerInterface
 {
+    public function __construct(
+        protected Filesystem $files
+    ) {
+    }
+
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $actor = RequestUtil::getActor($request);
@@ -28,7 +34,9 @@ class WorldMapHandler implements RequestHandlerInterface
             'Cache-Control' => 'private, max-age=86400',
         ]);
 
-        $response->getBody()->write((string) file_get_contents(__DIR__ . '/../../resources/world-map.svg'));
+        // Filesystem::get() throws on a missing/unreadable file, so a broken
+        // deployment surfaces as a proper 500 instead of a silent empty 200.
+        $response->getBody()->write($this->files->get(__DIR__ . '/../../resources/world-map.svg'));
 
         return $response;
     }

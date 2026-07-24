@@ -7,8 +7,8 @@ use Flarum\Discussion\Discussion;
 use Flarum\Group\Group;
 use Flarum\Locale\Translator;
 use Flarum\Settings\SettingsRepositoryInterface;
+use Flarum\User\User;
 use Illuminate\Contracts\Mail\Mailer;
-use Illuminate\Database\ConnectionInterface;
 use LinkRobins\Birdseye\Rollup\Rollup;
 use Symfony\Component\Console\Input\InputOption;
 
@@ -27,8 +27,7 @@ class DigestCommand extends AbstractCommand
     public function __construct(
         protected SettingsRepositoryInterface $settings,
         protected Mailer $mailer,
-        protected Translator $translator,
-        protected ConnectionInterface $db
+        protected Translator $translator
     ) {
         parent::__construct();
     }
@@ -81,7 +80,7 @@ class DigestCommand extends AbstractCommand
             '{visitors}' => number_format($week['visitors']),
         ]);
 
-        $recipients = $this->db->table('users')
+        $recipients = User::query()
             ->join('group_user', 'group_user.user_id', '=', 'users.id')
             ->where('group_user.group_id', Group::ADMINISTRATOR_ID)
             ->where('users.is_email_confirmed', true)
