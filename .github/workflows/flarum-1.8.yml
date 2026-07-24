@@ -45,6 +45,10 @@ jobs:
       - name: Require Birdseye from this checkout
         working-directory: flarum
         run: |
+          # The path repo exposes birdseye as dev-main on a branch build; allow
+          # dev while still preferring stable for everything else.
+          composer config minimum-stability dev
+          composer config prefer-stable true
           composer config repositories.extension '{"type": "path", "url": "../extension", "options": {"symlink": false}}'
           composer require "linkrobins/birdseye:*" --no-interaction --with-all-dependencies
 

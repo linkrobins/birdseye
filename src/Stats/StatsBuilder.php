@@ -226,13 +226,18 @@ class StatsBuilder
         // Grouping by both selected non-aggregates keeps Postgres happy; the
         // hard limit bounds pathological mass-signup forums (cohorts beyond
         // it would be sampled, not silently wrong: rows arrive join-ordered).
+        // The table name inside a raw expression is not prefixed by the query
+        // builder (unlike ->table()/->join()), so prefix it by hand or the
+        // whole stats endpoint 500s on any install that uses a table prefix.
+        $prefix = $this->db->getTablePrefix();
+
         $users = $this->db->table('users')
             ->leftJoin('posts', 'posts.user_id', '=', 'users.id')
             ->where('users.joined_at', '>=', $since)
             ->groupBy('users.id', 'users.joined_at')
             ->orderBy('users.joined_at')
             ->limit(20000)
-            ->get(['users.id', 'users.joined_at', $this->db->raw('MIN(posts.created_at) as first_post_at')]);
+            ->get(['users.id', 'users.joined_at', $this->db->raw("MIN({$prefix}posts.created_at) as first_post_at")]);
 
         $cohorts = [];
 
