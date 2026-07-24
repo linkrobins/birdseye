@@ -1,0 +1,19 @@
+# Non-interactive install answers for the dual-major CI smoke test
+# (php flarum install --file). The database matches the MySQL service in
+# .github/workflows/flarum-1.8.yml. Throwaway CI credentials only.
+debug: false
+baseUrl: http://localhost
+databaseConfiguration:
+  driver: mysql
+  host: 127.0.0.1
+  port: 3306
+  database: flarum
+  username: root
+  password: root
+  prefix: ''
+adminUser:
+  username: admin
+  password: adminadmin
+  email: admin@flarum.test
+settings:
+  mail_driver: log

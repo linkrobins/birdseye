@@ -1,6 +1,7 @@
 <?php
 
 use Flarum\Api\Resource\ForumResource;
+use Flarum\Api\Serializer\ForumSerializer;
 use Flarum\Extend;
 use Flarum\Post\Event\Posted;
 use Flarum\User\Event\Registered;
@@ -13,6 +14,25 @@ use LinkRobins\Birdseye\Console\DigestCommand;
 use LinkRobins\Birdseye\Console\SyncCommand;
 use LinkRobins\Birdseye\Listener\RecordPosted;
 use LinkRobins\Birdseye\Listener\RecordRegistered;
+use LinkRobins\Birdseye\Permissions;
+
+// The forum field telling the frontend whether to offer the Analytics entry
+// (fail-closed). On 2.0 it is a resource field; on 1.8, where API resources
+// don't exist, the same attribute rides the legacy forum serializer. The
+// ternary evaluates only the branch for the running major, so Extend\ApiSerializer
+// (removed in 2.0) and Extend\ApiResource (absent in 1.8) are each referenced
+// only where they exist.
+$forumField = class_exists(ForumResource::class)
+    ? (new Extend\ApiResource(ForumResource::class))->fields(ForumFields::class)
+    : (new Extend\ApiSerializer(ForumSerializer::class))->attributes(function ($serializer, $model, array $attributes): array {
+        try {
+            $attributes['birdseyeCanViewStats'] = $serializer->getActor()->hasPermission(Permissions::VIEW_STATS);
+        } catch (\Throwable) {
+            $attributes['birdseyeCanViewStats'] = false;
+        }
+
+        return $attributes;
+    });
 
 return [
     (new Extend\Frontend('admin'))
@@ -26,8 +46,8 @@ return [
         ->css(__DIR__ . '/less/forum.less'),
 
     // Tells the forum frontend whether to offer that entry (fail-closed).
-    (new Extend\ApiResource(ForumResource::class))
-        ->fields(ForumFields::class),
+    // A 2.0 resource field or a 1.8 serializer attribute; see $forumField above.
+    $forumField,
 
     // Dashboard data + the bundled world-map asset. Both gated on the
     // viewStats permission (admins always pass).

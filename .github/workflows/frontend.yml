@@ -1,0 +1,23 @@
+name: Frontend
+
+on: [workflow_dispatch, push, pull_request]
+
+jobs:
+  run:
+    # The reusable workflow commits a rebuilt js/dist back to the branch
+    # when it drifts from source, which needs write access.
+    permissions:
+      contents: write
+    uses: flarum/framework/.github/workflows/REUSABLE_frontend.yml@2.x
+    with:
+      enable_bundlewatch: false
+      enable_prettier: true
+      enable_typescript: false
+
+      frontend_directory: ./js
+      backend_directory: .
+      js_package_manager: npm
+      main_git_branch: main
+
+    secrets:
+      bundlewatch_github_token: ${{ secrets.BUNDLEWATCH_GITHUB_TOKEN }}

@@ -38,6 +38,16 @@ linkrobins-birdseye:
         Share of new members who post within 7 days of joining. The newest
         weeks are still maturing.
       joined_word: joined
+      export: Export as CSV
+      export_all: Export CSV
+      totals: Totals
+      col_section: Section
+      col_label: Label
+      col_visits: Visits
+      col_value: Value
+      col_week: Week
+      col_converted: Converted
+      col_activation_pct: Activation %
   forum:
     session_menu:
       analytics_button: Analytics

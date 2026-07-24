@@ -14,8 +14,8 @@
         "source": "https://github.com/linkrobins/birdseye"
     },
     "require": {
-        "php": "^8.3",
-        "flarum/core": "^2.0"
+        "php": ">=8.0",
+        "flarum/core": ">=1.8.0 <3.0.0"
     },
     "require-dev": {
         "flarum/testing": "^2.0",
@@ -60,6 +60,13 @@
                 "name": "fas fa-chart-line",
                 "backgroundColor": "#0b1d26",
                 "color": "#6fd7e4"
+            }
+        },
+        "flarum-cli": {
+            "modules": {
+                "githubActions": true,
+                "backendTesting": true,
+                "prettier": true
             }
         }
     }

@@ -3,3 +3,6 @@ js/dist/*.map
 js/dist-typings/
 vendor/
 composer.lock
+.phpunit.cache
+tests/.phpunit.cache
+tests/integration/tmp

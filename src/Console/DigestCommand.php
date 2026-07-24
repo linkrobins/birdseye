@@ -5,7 +5,7 @@ namespace LinkRobins\Birdseye\Console;
 use Flarum\Console\AbstractCommand;
 use Flarum\Discussion\Discussion;
 use Flarum\Group\Group;
-use Flarum\Locale\TranslatorInterface;
+use Flarum\Locale\Translator;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Illuminate\Contracts\Mail\Mailer;
 use Illuminate\Database\ConnectionInterface;
@@ -27,7 +27,7 @@ class DigestCommand extends AbstractCommand
     public function __construct(
         protected SettingsRepositoryInterface $settings,
         protected Mailer $mailer,
-        protected TranslatorInterface $translator,
+        protected Translator $translator,
         protected ConnectionInterface $db
     ) {
         parent::__construct();

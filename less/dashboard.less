@@ -86,9 +86,42 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
     font-weight: 600;
     font-size: 13px;
     margin-bottom: 8px;
+  }
+
+  &-cardTitleText {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &-cardTitleRight {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+  }
+
+  // Per-card CSV download: a quiet icon that lifts on hover, so it never
+  // competes with the card's data.
+  &-export {
+    background: none;
+    border: 0;
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--muted-more-color, var(--muted-color));
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--text-color);
+      background: var(--control-bg);
+    }
   }
 
   &-span {
