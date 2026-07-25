@@ -202,7 +202,13 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
           this.card('unanswered', trans('unanswered'), this.unanswered, (l) => l, 'views', trans('unanswered_note')),
           this.card('sources', trans('sources'), block.sources, (l) => l || transText('direct'), 'visitors'),
           this.card('searches', trans('searches'), block.searches, (l) => l, 'searches'),
-          this.card('devices', trans('devices'), block.devices, (l) => (l ? l.charAt(0).toUpperCase() + l.slice(1) : transText('unknown')), 'visitors'),
+          this.card(
+            'devices',
+            trans('devices'),
+            block.devices,
+            (l) => (l ? l.charAt(0).toUpperCase() + l.slice(1) : transText('unknown')),
+            'visitors'
+          ),
           this.card('countries', trans('countries'), block.locations.slice(0, 8), countryName, 'visitors'),
           this.activationCard(),
         ]),
