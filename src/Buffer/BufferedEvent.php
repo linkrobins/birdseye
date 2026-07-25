@@ -25,7 +25,21 @@ class BufferedEvent extends AbstractModel
 {
     protected $table = 'birdseye_events';
 
-    protected $guarded = [];
+    // The only write path is a query-builder insert() (mass assignment never
+    // runs), but keep the allow-list explicit so a future Model::create()
+    // call can't silently accept arbitrary columns.
+    protected $fillable = [
+        'occurred_at',
+        'type',
+        'path',
+        'discussion_id',
+        'visitor',
+        'country',
+        'referrer',
+        'device',
+        'ip_prefix',
+        'search_query',
+    ];
 
     protected $casts = [
         'occurred_at' => 'datetime',

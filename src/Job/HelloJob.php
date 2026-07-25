@@ -37,8 +37,12 @@ class HelloJob extends AbstractJob
         try {
             // Short timeouts: on the sync queue driver this runs inside the
             // admin's settings-save request, so a dead endpoint must not hang
-            // the admin panel.
-            (new Client(['timeout' => 8, 'connect_timeout' => 4]))->post($endpoint, [
+            // the admin panel — 4s total is the worst case an admin waits.
+            // Synchronous-by-design: dispatchAfterResponse is a no-op in
+            // Flarum (core's Application::terminate() never flushes it) and
+            // skipping on the sync driver would kill instant bind for the
+            // majority default install.
+            (new Client(['timeout' => 4, 'connect_timeout' => 2]))->post($endpoint, [
                 'headers' => [
                     'Authorization' => "Bearer {$key}",
                     'Content-Type' => 'application/json',

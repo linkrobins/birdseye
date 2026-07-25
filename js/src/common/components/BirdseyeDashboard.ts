@@ -15,6 +15,16 @@ interface ListRow {
   url?: string;
 }
 
+/** What a breakdown card's numbers count — drives the donut centre word and
+ *  the per-card CSV header. Sources, devices, and countries are distinct
+ *  visitors (the processor counts one person once per key); content cards
+ *  count views; the searches card counts search submissions. Before v1.3.1
+ *  every card said "visitors", which mislabelled the view-counted cards
+ *  (discuss.flarum.org d/39605/19). */
+type Unit = 'visitors' | 'views' | 'searches';
+
+const UNIT_COL: Record<Unit, string> = { visitors: 'col_visitors', views: 'col_views', searches: 'col_searches' };
+
 interface RangeBlock {
   totals: {
     visits: number;
@@ -186,14 +196,14 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
         this.chart(block),
 
         m('.BirdseyeDashboard-lists', [
-          this.card('pages', trans('top_pages'), block.pages, (l) => l || '/'),
-          this.card('discussions', trans('top_discussions'), block.discussions, (l) => l),
-          block.tags === null ? null : this.card('tags', trans('tags'), block.tags, (l) => l),
-          this.card('unanswered', trans('unanswered'), this.unanswered, (l) => l, trans('unanswered_note')),
-          this.card('sources', trans('sources'), block.sources, (l) => l || transText('direct')),
-          this.card('searches', trans('searches'), block.searches, (l) => l),
-          this.card('devices', trans('devices'), block.devices, (l) => (l ? l.charAt(0).toUpperCase() + l.slice(1) : transText('unknown'))),
-          this.card('countries', trans('countries'), block.locations.slice(0, 8), countryName),
+          this.card('pages', trans('top_pages'), block.pages, (l) => l || '/', 'views'),
+          this.card('discussions', trans('top_discussions'), block.discussions, (l) => l, 'views'),
+          block.tags === null ? null : this.card('tags', trans('tags'), block.tags, (l) => l, 'views'),
+          this.card('unanswered', trans('unanswered'), this.unanswered, (l) => l, 'views', trans('unanswered_note')),
+          this.card('sources', trans('sources'), block.sources, (l) => l || transText('direct'), 'visitors'),
+          this.card('searches', trans('searches'), block.searches, (l) => l, 'searches'),
+          this.card('devices', trans('devices'), block.devices, (l) => (l ? l.charAt(0).toUpperCase() + l.slice(1) : transText('unknown')), 'visitors'),
+          this.card('countries', trans('countries'), block.locations.slice(0, 8), countryName, 'visitors'),
           this.activationCard(),
         ]),
 
@@ -237,9 +247,9 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
 
     /** Render a categorical breakdown as ranked bars or as a pie, per the
      *  header toggle. Same data, same links — only the shape changes. `key`
-     *  names the per-card CSV export. */
-    card(key: string, title: Mithril.Children, rows: ListRow[], labeller: (l: string) => Mithril.Children, note?: Mithril.Children) {
-      return this.viewMode === 'pie' ? this.donut(key, title, rows, labeller, note) : this.list(key, title, rows, labeller, note);
+     *  names the per-card CSV export; `unit` is what the numbers count. */
+    card(key: string, title: Mithril.Children, rows: ListRow[], labeller: (l: string) => Mithril.Children, unit: Unit, note?: Mithril.Children) {
+      return this.viewMode === 'pie' ? this.donut(key, title, rows, labeller, unit, note) : this.list(key, title, rows, labeller, unit, note);
     }
 
     /** A card title with its optional note and, when there is something to
@@ -260,10 +270,11 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
       ]);
     }
 
-    /** Download one breakdown card as a two-column CSV (label, visits), using
-     *  the same human-readable labels the card shows. */
-    exportRows(key: string, rows: ListRow[], labeller: (l: string) => Mithril.Children) {
-      const data: unknown[][] = [[transText('col_label'), transText('col_visits')]];
+    /** Download one breakdown card as a two-column CSV, using the same
+     *  human-readable labels the card shows; the value column is named for
+     *  what the card actually counts. */
+    exportRows(key: string, rows: ListRow[], labeller: (l: string) => Mithril.Children, unit: Unit) {
+      const data: unknown[][] = [[transText('col_label'), transText(UNIT_COL[unit])]];
       rows.forEach((r) => data.push([String(labeller(r.label)), r.visits]));
       downloadCsv(`birdseye-${key}-${this.range}.csv`, toCsv(data));
     }
@@ -330,11 +341,11 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
       return m('a', { href: base + url, target: '_blank', rel: 'noopener' }, content);
     }
 
-    list(key: string, title: Mithril.Children, rows: ListRow[], labeller: (l: string) => Mithril.Children, note?: Mithril.Children) {
+    list(key: string, title: Mithril.Children, rows: ListRow[], labeller: (l: string) => Mithril.Children, unit: Unit, note?: Mithril.Children) {
       const max = Math.max(...rows.map((r) => r.visits), 1);
 
       return m('.BirdseyeDashboard-card', [
-        this.cardTitleEl(title, note ?? null, rows.length ? () => this.exportRows(key, rows, labeller) : null),
+        this.cardTitleEl(title, note ?? null, rows.length ? () => this.exportRows(key, rows, labeller, unit) : null),
         rows.length
           ? rows.map((r) =>
               m('.BirdseyeDashboard-row', [
@@ -355,9 +366,9 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
      * a conic-gradient ring with a punched-out centre holding the total. Legend
      * labels stay linked wherever the bar list would be.
      */
-    donut(key: string, title: Mithril.Children, rows: ListRow[], labeller: (l: string) => Mithril.Children, note?: Mithril.Children) {
+    donut(key: string, title: Mithril.Children, rows: ListRow[], labeller: (l: string) => Mithril.Children, unit: Unit, note?: Mithril.Children) {
       const present = rows.filter((r) => r.visits > 0);
-      const cardTitle = this.cardTitleEl(title, note ?? null, present.length ? () => this.exportRows(key, rows, labeller) : null);
+      const cardTitle = this.cardTitleEl(title, note ?? null, present.length ? () => this.exportRows(key, rows, labeller, unit) : null);
       const total = present.reduce((s, r) => s + r.visits, 0);
 
       if (!total) {
@@ -400,7 +411,7 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
           m('.BirdseyeDashboard-donut', { style: { background: `conic-gradient(${stops})` } }, [
             m('.BirdseyeDashboard-donutHole', [
               m('.BirdseyeDashboard-donutTotal', String(total)),
-              m('.BirdseyeDashboard-donutTotalLabel', transText('visitors_word')),
+              m('.BirdseyeDashboard-donutTotalLabel', transText(`${unit}_word`)),
             ]),
           ]),
           m(

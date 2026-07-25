@@ -37,6 +37,7 @@ class SyncBatchJob extends AbstractJob implements ShouldBeUnique
     {
         $key = trim((string) $settings->get('linkrobins-birdseye.license_key'));
         $endpoint = trim((string) $settings->get('linkrobins-birdseye.endpoint'));
+        $keyed = $key !== '' && $endpoint !== '';
 
         for ($i = 0; $i < self::MAX_DAYS; $i++) {
             $day = $this->oldestCompleteDay();
@@ -45,16 +46,43 @@ class SyncBatchJob extends AbstractJob implements ShouldBeUnique
                 return;
             }
 
-            $events = BufferedEvent::query()
+            // Plain query-builder rows, streamed — a 100k-event day never
+            // hydrates 100k Eloquent models (that could brush memory_limit
+            // on shared hosting). occurred_at arrives as the raw
+            // "Y-m-d H:i:s" string, no Carbon cast. The keyed path still
+            // materializes one plain-array payload for the day — the
+            // one-day-one-push protocol needs the whole day in a single
+            // request so the stateless processor can compute uniques and
+            // sessions — while the unkeyed path aggregates on the fly and
+            // retains nothing.
+            $rows = BufferedEvent::query()
                 ->whereBetween('occurred_at', ["{$day} 00:00:00", "{$day} 23:59:59"])
                 ->orderBy('id')
                 ->limit(self::MAX_EVENTS)
-                ->get();
+                ->toBase()
+                ->cursor();
 
-            if ($key !== '' && $endpoint !== '') {
+            if ($keyed) {
+                $events = [];
+
+                foreach ($rows as $row) {
+                    $events[] = [
+                        'at' => substr((string) $row->occurred_at, 11, 8),
+                        'type' => $row->type,
+                        'path' => $row->path,
+                        'discussion_id' => $row->discussion_id,
+                        'visitor' => $row->visitor,
+                        'country' => $row->country,
+                        'referrer' => $row->referrer,
+                        'device' => $row->device,
+                        'ip_prefix' => $row->ip_prefix,
+                        'q' => $row->search_query,
+                    ];
+                }
+
                 $rollups = $this->pushForProcessing($endpoint, $key, (string) $config->url(), $day, $events);
             } else {
-                $rollups = $this->localRollups($day, $events);
+                $rollups = $this->localRollups($day, $rows);
             }
 
             foreach ($rollups as $r) {
@@ -86,10 +114,10 @@ class SyncBatchJob extends AbstractJob implements ShouldBeUnique
     }
 
     /**
-     * @param \Illuminate\Support\Collection<int, BufferedEvent> $events
+     * @param array<int, array<string, mixed>> $events
      * @return array<int, array{date: string, metric: string, key?: string, value: int}>
      */
-    protected function pushForProcessing(string $endpoint, string $key, string $forumUrl, string $day, $events): array
+    protected function pushForProcessing(string $endpoint, string $key, string $forumUrl, string $day, array $events): array
     {
         $client = new Client(['timeout' => 60, 'connect_timeout' => 10]);
 
@@ -101,19 +129,8 @@ class SyncBatchJob extends AbstractJob implements ShouldBeUnique
             'body' => json_encode([
                 'forum_url' => $forumUrl,
                 'date' => $day,
-                'truncated' => $events->count() >= self::MAX_EVENTS,
-                'events' => $events->map(fn (BufferedEvent $e) => [
-                    'at' => $e->occurred_at->format('H:i:s'),
-                    'type' => $e->type,
-                    'path' => $e->path,
-                    'discussion_id' => $e->discussion_id,
-                    'visitor' => $e->visitor,
-                    'country' => $e->country,
-                    'referrer' => $e->referrer,
-                    'device' => $e->device,
-                    'ip_prefix' => $e->ip_prefix,
-                    'q' => $e->search_query,
-                ])->all(),
+                'truncated' => count($events) >= self::MAX_EVENTS,
+                'events' => $events,
             ], JSON_UNESCAPED_SLASHES),
         ]);
 
@@ -127,22 +144,39 @@ class SyncBatchJob extends AbstractJob implements ShouldBeUnique
     }
 
     /**
-     * Unkeyed fallback: honest basic counts, computed locally. Everything
-     * richer (sessions, bounce, countries, top lists) is what the license
-     * key buys.
+     * Unkeyed fallback: honest basic counts, computed locally in one
+     * streaming pass. Everything richer (sessions, bounce, countries, top
+     * lists) is what the license key buys.
      *
-     * @param \Illuminate\Support\Collection<int, BufferedEvent> $events
+     * @param iterable<int, object> $rows
      * @return array<int, array{date: string, metric: string, key?: string, value: int}>
      */
-    protected function localRollups(string $day, $events): array
+    protected function localRollups(string $day, iterable $rows): array
     {
-        $views = $events->where('type', BufferedEvent::TYPE_VIEW);
+        $pageviews = $posts = $registrations = 0;
+        $visitors = [];
+
+        foreach ($rows as $row) {
+            $type = (string) $row->type;
+
+            if ($type === BufferedEvent::TYPE_VIEW) {
+                $pageviews++;
+
+                if (($v = (string) ($row->visitor ?? '')) !== '') {
+                    $visitors[$v] = true;
+                }
+            } elseif ($type === BufferedEvent::TYPE_POST) {
+                $posts++;
+            } elseif ($type === BufferedEvent::TYPE_REGISTER) {
+                $registrations++;
+            }
+        }
 
         return [
-            ['date' => $day, 'metric' => 'pageviews', 'value' => $views->count()],
-            ['date' => $day, 'metric' => 'visitors', 'value' => $views->pluck('visitor')->filter()->unique()->count()],
-            ['date' => $day, 'metric' => 'posts', 'value' => $events->where('type', BufferedEvent::TYPE_POST)->count()],
-            ['date' => $day, 'metric' => 'registrations', 'value' => $events->where('type', BufferedEvent::TYPE_REGISTER)->count()],
+            ['date' => $day, 'metric' => 'pageviews', 'value' => $pageviews],
+            ['date' => $day, 'metric' => 'visitors', 'value' => count($visitors)],
+            ['date' => $day, 'metric' => 'posts', 'value' => $posts],
+            ['date' => $day, 'metric' => 'registrations', 'value' => $registrations],
         ];
     }
 

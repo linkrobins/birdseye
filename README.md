@@ -72,6 +72,15 @@ Enable it in the admin panel. That's it — stats begin collecting immediately.
   runs slightly conservative compared to script-based trackers — the cost of
   shipping no JavaScript at all.
 
+## Development
+
+The frontend deliberately builds with a bare webpack + babel config instead
+of `flarum-webpack-config`. One artifact serves Flarum 1.8 **and** 2.x, and
+flarum-webpack-config's module prologue references `flarum.reg`, which does
+not exist on 1.x — a bundle built with it dies on load there. Details are in
+the header of `js/webpack.config.js`; please don't "modernize" the build
+without checking the 1.8 leg of CI.
+
 ## Links
 
 - [Birdseye subscriptions](https://linkrobins.com/birdseye)
