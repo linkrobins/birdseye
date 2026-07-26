@@ -25,6 +25,41 @@ type Unit = 'visitors' | 'views' | 'searches';
 
 const UNIT_COL: Record<Unit, string> = { visitors: 'col_visitors', views: 'col_views', searches: 'col_searches' };
 
+/** The two header choices, and what the dashboard opens on the first time. */
+const RANGES = ['7d', '30d'] as const;
+const VIEW_MODES = ['bars', 'pie'] as const;
+type RangeKey = (typeof RANGES)[number];
+type ViewMode = (typeof VIEW_MODES)[number];
+const DEFAULT_RANGE: RangeKey = '30d';
+const DEFAULT_VIEW_MODE: ViewMode = 'bars';
+
+// Sticky header choices live in localStorage, not in a user preference: they're
+// per-screen viewing state, and this bundle deliberately carries no flarum/*
+// import and makes no write requests (see common/compat.ts). Reads and writes
+// are both guarded — Safari's private mode and "block all storage" throw on
+// access rather than returning null, and a dashboard must never fail to render
+// over a remembered button.
+const PREF_PREFIX = 'linkrobins-birdseye.';
+
+function readPref<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+  try {
+    const stored = window.localStorage.getItem(PREF_PREFIX + key) as T | null;
+    // Validate against the live option list: a stale value left by an older
+    // version (or a hand-edited key) must not strand the dashboard.
+    return stored !== null && allowed.includes(stored) ? stored : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writePref(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(PREF_PREFIX + key, value);
+  } catch {
+    // Storage unavailable or full — the choice still applies for this view.
+  }
+}
+
 interface RangeBlock {
   totals: {
     visits: number;
@@ -86,10 +121,12 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
     today: TodayBlock | null = null;
     activation: ActivationRow[] = [];
     unanswered: ListRow[] = [];
-    range = '30d';
+    /** Both header choices are sticky — picked once, then restored on every
+     *  later visit rather than re-selected each time (d/39605/26). */
+    range: RangeKey = readPref('range', RANGES, DEFAULT_RANGE);
     /** How the categorical breakdown cards render — ranked bars or a pie/donut.
      *  Toggled from the header; applies to every list at once. */
-    viewMode: 'bars' | 'pie' = 'bars';
+    viewMode: ViewMode = readPref('viewMode', VIEW_MODES, DEFAULT_VIEW_MODE);
     mapMarkup: string | null = null;
 
     oninit(vnode: Mithril.Vnode) {
@@ -104,6 +141,13 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
           this.today = data.today;
           this.activation = data.activation || [];
           this.unanswered = data.unanswered || [];
+
+          // A remembered range the payload doesn't carry would render an empty
+          // dashboard forever, with no hint that the stored choice is the
+          // cause. Fall back to the default instead.
+          if (!this.ranges?.[this.range] && this.ranges?.[DEFAULT_RANGE]) {
+            this.range = DEFAULT_RANGE;
+          }
         })
         .finally(() => {
           this.loading = false;
@@ -145,7 +189,7 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
             // Bars ⇄ pie: flips every categorical breakdown card at once.
             m(
               '.BirdseyeDashboard-toggle',
-              (['bars', 'pie'] as const).map((mode) =>
+              VIEW_MODES.map((mode) =>
                 m(
                   'button.Button.Button--size-sm',
                   {
@@ -154,7 +198,7 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
                     // modal + reloading) instead of just toggling the view.
                     type: 'button',
                     className: this.viewMode === mode ? 'Button--primary' : '',
-                    onclick: () => (this.viewMode = mode),
+                    onclick: () => writePref('viewMode', (this.viewMode = mode)),
                   },
                   trans(mode === 'bars' ? 'view_bars' : 'view_pie')
                 )
@@ -162,13 +206,13 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
             ),
             m(
               '.BirdseyeDashboard-ranges',
-              ['7d', '30d'].map((r) =>
+              RANGES.map((r) =>
                 m(
                   'button.Button.Button--size-sm',
                   {
                     type: 'button',
                     className: this.range === r ? 'Button--primary' : '',
-                    onclick: () => (this.range = r),
+                    onclick: () => writePref('range', (this.range = r)),
                   },
                   trans(r === '7d' ? 'range_7d' : 'range_30d')
                 )
