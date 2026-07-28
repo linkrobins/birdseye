@@ -56,9 +56,79 @@ class StatsEndpointTest extends TestCase
 
         $data = json_decode($response->getBody()->getContents(), true);
 
-        foreach (['ranges', 'today', 'activation', 'unanswered'] as $key) {
+        foreach (['ranges', 'today', 'unanswered'] as $key) {
             $this->assertArrayHasKey($key, $data);
         }
+
+        $this->assertArrayHasKey('new_members', $data['ranges']['7d']);
+    }
+
+    /**
+     * Someone who joined on a Sunday is counted on that Sunday. The card used
+     * to bucket by week and label the row with the Monday, so every Sunday
+     * signup read six days early (discuss.flarum.org d/39605/34).
+     */
+    #[Test]
+    public function a_new_member_is_counted_on_the_day_they_registered(): void
+    {
+        $this->seedUser(3, 'joined_sunday', true, '-2 days');
+
+        $expected = (new \DateTimeImmutable('-2 days', new \DateTimeZone('UTC')))->format('Y-m-d');
+
+        $rows = $this->newMemberRows();
+
+        $this->assertArrayHasKey($expected, $rows);
+        $this->assertSame(1, $rows[$expected]);
+    }
+
+    /**
+     * An account that never confirmed its email isn't a member — Flarum grants
+     * the Member group off is_email_confirmed, so an unconfirmed account has
+     * guest permissions (d/39605/37). It still shows in the Signups tile.
+     */
+    #[Test]
+    public function unconfirmed_signups_are_not_counted_as_members(): void
+    {
+        $this->seedUser(3, 'unconfirmed', false, '-2 days');
+
+        $day = (new \DateTimeImmutable('-2 days', new \DateTimeZone('UTC')))->format('Y-m-d');
+
+        $this->assertArrayNotHasKey($day, $this->newMemberRows());
+    }
+
+    /** @return array<string, int> ISO day => new members, for the 7-day range. */
+    protected function newMemberRows(): array
+    {
+        // The installer stamps the admin with joined_at = install time, which
+        // would otherwise land in whichever day we're asserting on.
+        $this->database()->table('users')->where('id', 1)->update(['joined_at' => '2020-01-01 00:00:00']);
+
+        $data = json_decode(
+            $this->send($this->request('GET', '/api/birdseye/stats', ['authenticatedAs' => 1]))->getBody()->getContents(),
+            true
+        );
+
+        $rows = [];
+
+        foreach ($data['ranges']['7d']['new_members'] as $row) {
+            $rows[$row['label']] = $row['visits'];
+        }
+
+        return $rows;
+    }
+
+    protected function seedUser(int $id, string $name, bool $confirmed, string $joined): void
+    {
+        $this->database()->table('users')->insert([
+            [
+                'id' => $id,
+                'username' => $name,
+                'email' => $name.'@machine.local',
+                'password' => 'x',
+                'is_email_confirmed' => $confirmed ? 1 : 0,
+                'joined_at' => (new \DateTimeImmutable($joined, new \DateTimeZone('UTC')))->format('Y-m-d H:i:s'),
+            ],
+        ]);
     }
 
     #[Test]

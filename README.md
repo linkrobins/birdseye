@@ -30,10 +30,9 @@ that's the permanent history, a few kilobytes per month.
 
 ## Beyond the numbers
 
-- **Forum health, not just traffic** — new-member activation (who posts
-  within their first week), discussions that get read but never answered,
-  top tags, live search terms, and a "today so far" strip straight from the
-  buffer.
+- **Forum health, not just traffic** — new members per day, discussions that
+  get read but never answered, top tags, live search terms, and a "today so
+  far" strip straight from the buffer.
 - **Share the dashboard** — a `View forum analytics` permission lets any
   group you choose open the dashboard from their user menu, without admin
   access. Nobody holds it until you grant it.

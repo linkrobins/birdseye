@@ -15,7 +15,7 @@ use LinkRobins\Birdseye\Rollup\Rollup;
  * renders one well-known structure. Everything here reads the forum's OWN
  * database; nothing leaves the server.
  *
- * The forum-health blocks (today, activation, unanswered, tags) are computed
+ * The forum-health blocks (today, new members, unanswered, tags) are computed
  * entirely locally too — they need no license key and no processor round
  * trip, which is the point: the free tier should already feel like a forum
  * tool, not a generic pageview counter.
@@ -38,12 +38,12 @@ class StatsBuilder
         'search' => ['searches', 8],
     ];
 
-    /** Weekly cohorts shown on the activation card. */
-    protected const ACTIVATION_WEEKS = 8;
+    /** Days shown on the new-members card, newest first. */
+    protected const MEMBER_DAYS = 8;
 
-    /** Users per activation chunk; ACTIVATION_CAP bounds the whole scan. */
-    protected const ACTIVATION_CHUNK = 2000;
-    protected const ACTIVATION_CAP = 20000;
+    /** Users per scan chunk; MEMBER_CAP bounds the whole scan. */
+    protected const MEMBER_CHUNK = 2000;
+    protected const MEMBER_CAP = 20000;
 
     public function __construct(
         protected ExtensionManager $extensions
@@ -51,7 +51,7 @@ class StatsBuilder
     }
 
     /**
-     * @return array{ranges: array<string, mixed>, today: array<string, int>, activation: array<int, mixed>, unanswered: array<int, mixed>}
+     * @return array{ranges: array<string, mixed>, today: array<string, int>, unanswered: array<int, mixed>}
      */
     public function build(User $actor): array
     {
@@ -61,7 +61,6 @@ class StatsBuilder
                 '30d' => $this->range(30, $actor),
             ],
             'today' => $this->today(),
-            'activation' => $this->activation(),
             'unanswered' => $this->unanswered($actor),
         ];
     }
@@ -149,6 +148,7 @@ class StatsBuilder
         // null (not []) when the tags extension isn't installed, so the
         // frontend can drop the card instead of showing an empty one.
         $block['tags'] = $this->tagViews($discussionSums);
+        $block['new_members'] = $this->newMembers($from, $to);
 
         return $block;
     }
@@ -208,81 +208,60 @@ class StatsBuilder
     }
 
     /**
-     * Lurker→poster conversion: for each of the last N join-weeks, the share
-     * of new members who posted anything within 7 days of joining. Computed
-     * from the forum's own users/posts tables — no capture involved. The
-     * newest cohorts read low until their 7-day window has elapsed; the UI
-     * says so.
+     * How many people became members on each day of the range — counted on
+     * the day they actually registered, not on a bucket boundary
+     * (discuss.flarum.org d/39605/36).
      *
-     * @return array<int, array{week: string, joined: int, converted: int, pct: float|null}>
+     * "New member" is Flarum's Member group, which core grants off
+     * `is_email_confirmed` (see User::permissions()) — there are no
+     * group_user rows to join against (d/39605/37). Accounts that never
+     * confirmed are not members; they're counted raw by the Signups tile.
+     *
+     * Read from the forum's own users table, no capture involved.
+     *
+     * @return array<int, array{label: string, visits: int}>
      */
-    protected function activation(): array
+    protected function newMembers(string $from, string $to): array
     {
-        $weekStarts = [];
-        $monday = new \DateTimeImmutable('monday this week', new \DateTimeZone('UTC'));
+        $days = [];
 
-        for ($i = self::ACTIVATION_WEEKS - 1; $i >= 0; $i--) {
-            $weekStarts[] = $monday->modify("-{$i} weeks");
-        }
-
-        $since = $weekStarts[0]->format('Y-m-d 00:00:00');
-
-        $cohorts = [];
-
-        foreach ($weekStarts as $start) {
-            $cohorts[$start->format('Y-m-d')] = ['joined' => 0, 'converted' => 0];
-        }
-
-        // Chunked so a mass-signup forum can't balloon PHP memory: users
-        // stream through a couple thousand at a time, with one grouped MIN()
-        // per chunk for their first-post times (bare column names only, so
-        // no table-prefix concerns — Eloquent prefixes the rest). Grouping by
-        // just user_id with a single aggregate keeps Postgres happy. The cap
-        // bounds pathological forums; cohorts beyond it are sampled (rows
-        // arrive id-ordered ≈ join-ordered), not silently wrong.
+        // Chunked so a mass-signup forum can't balloon PHP memory. The cap
+        // bounds pathological forums; days beyond it are sampled (rows arrive
+        // id-ordered ≈ join-ordered), not silently wrong.
         $processed = 0;
 
         User::query()
-            ->where('joined_at', '>=', $since)
-            ->select('id', 'joined_at')
-            ->chunkById(self::ACTIVATION_CHUNK, function ($users) use (&$cohorts, &$processed) {
-                $firstPosts = Post::query()
-                    ->whereIn('user_id', $users->pluck('id'))
-                    ->groupBy('user_id')
-                    ->selectRaw('user_id, MIN(created_at) as first_post_at')
-                    ->pluck('first_post_at', 'user_id');
-
+            ->whereBetween('joined_at', [$from.' 00:00:00', $to.' 23:59:59'])
+            ->select('id', 'joined_at', 'is_email_confirmed')
+            ->chunkById(self::MEMBER_CHUNK, function ($users) use (&$days, &$processed) {
                 foreach ($users as $user) {
-                    // Raw column strings (not casts) so the date math stays
-                    // byte-identical to what the database stores — UTC.
-                    $joined = new \DateTimeImmutable((string) $user->getRawOriginal('joined_at'), new \DateTimeZone('UTC'));
-                    $week = $joined->modify('monday this week')->format('Y-m-d');
-
-                    if (!isset($cohorts[$week])) {
+                    // Read the flag through the model cast, so MySQL's
+                    // tinyint and Postgres' boolean both land as a PHP bool.
+                    if (!$user->is_email_confirmed) {
                         continue;
                     }
 
-                    $cohorts[$week]['joined']++;
+                    // The raw column string (not the cast) so the date is
+                    // byte-identical to what the database stores — UTC.
+                    $day = substr((string) $user->getRawOriginal('joined_at'), 0, 10);
 
-                    $firstPost = $firstPosts[$user->id] ?? null;
-
-                    if ($firstPost !== null
-                        && new \DateTimeImmutable((string) $firstPost, new \DateTimeZone('UTC')) <= $joined->modify('+7 days')) {
-                        $cohorts[$week]['converted']++;
-                    }
+                    $days[$day] = ($days[$day] ?? 0) + 1;
                 }
 
                 $processed += $users->count();
 
-                return $processed < self::ACTIVATION_CAP;
+                return $processed < self::MEMBER_CAP;
             });
 
-        return array_map(fn ($week, $c) => [
-            'week' => $week,
-            'joined' => $c['joined'],
-            'converted' => $c['converted'],
-            'pct' => $c['joined'] > 0 ? round($c['converted'] / $c['joined'], 4) : null,
-        ], array_keys($cohorts), array_values($cohorts));
+        // Newest day first, then the same row cap the other cards use.
+        krsort($days);
+        $days = array_slice($days, 0, self::MEMBER_DAYS, true);
+
+        return array_map(
+            fn ($day, $count) => ['label' => $day, 'visits' => $count],
+            array_keys($days),
+            array_values($days)
+        );
     }
 
     /**

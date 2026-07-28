@@ -21,9 +21,14 @@ interface ListRow {
  *  count views; the searches card counts search submissions. Before v1.3.1
  *  every card said "visitors", which mislabelled the view-counted cards
  *  (discuss.flarum.org d/39605/19). */
-type Unit = 'visitors' | 'views' | 'searches';
+type Unit = 'visitors' | 'views' | 'searches' | 'members';
 
-const UNIT_COL: Record<Unit, string> = { visitors: 'col_visitors', views: 'col_views', searches: 'col_searches' };
+const UNIT_COL: Record<Unit, string> = {
+  visitors: 'col_visitors',
+  views: 'col_views',
+  searches: 'col_searches',
+  members: 'col_members',
+};
 
 /** The two header choices, and what the dashboard opens on the first time. */
 const RANGES = ['7d', '30d'] as const;
@@ -78,6 +83,8 @@ interface RangeBlock {
   searches: ListRow[];
   /** null when the tags extension isn't installed — the card is dropped. */
   tags: ListRow[] | null;
+  /** Confirmed members per day, newest first; label is an ISO date. */
+  new_members: ListRow[];
 }
 
 interface TodayBlock {
@@ -87,17 +94,9 @@ interface TodayBlock {
   registrations: number;
 }
 
-interface ActivationRow {
-  week: string;
-  joined: number;
-  converted: number;
-  pct: number | null;
-}
-
 interface StatsPayload {
   ranges: Record<string, RangeBlock>;
   today: TodayBlock;
-  activation: ActivationRow[];
   unanswered: ListRow[];
 }
 
@@ -119,7 +118,6 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
     loading = true;
     ranges: Record<string, RangeBlock> | null = null;
     today: TodayBlock | null = null;
-    activation: ActivationRow[] = [];
     unanswered: ListRow[] = [];
     /** Both header choices are sticky — picked once, then restored on every
      *  later visit rather than re-selected each time (d/39605/26). */
@@ -139,7 +137,6 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
         .then((data) => {
           this.ranges = data.ranges;
           this.today = data.today;
-          this.activation = data.activation || [];
           this.unanswered = data.unanswered || [];
 
           // A remembered range the payload doesn't carry would render an empty
@@ -232,7 +229,7 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
           this.tile(trans('bounce_rate'), t.bounce_rate === null ? '—' : `${Math.round(t.bounce_rate * 100)}%`),
           this.tile(trans('avg_visit'), t.avg_session_sec === null ? '—' : fmtDur(t.avg_session_sec)),
           this.tile(trans('posts'), String(t.posts)),
-          this.tile(trans('new_members'), String(t.registrations)),
+          this.tile(trans('signups'), String(t.registrations)),
         ]),
 
         this.todayStrip(),
@@ -254,7 +251,7 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
             'visitors'
           ),
           this.card('countries', trans('countries'), block.locations.slice(0, 8), countryName, 'visitors'),
-          this.activationCard(),
+          this.card('new_members', trans('new_members'), block.new_members, shortDate, 'members'),
         ]),
 
         m('.BirdseyeDashboard-card', [
@@ -322,10 +319,14 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
 
     /** Download one breakdown card as a two-column CSV, using the same
      *  human-readable labels the card shows; the value column is named for
-     *  what the card actually counts. */
+     *  what the card actually counts.
+     *
+     *  The new-members card is the exception: it displays "Jul 27" but exports
+     *  the raw ISO date, which a spreadsheet can actually sort. */
     exportRows(key: string, rows: ListRow[], labeller: (l: string) => Mithril.Children, unit: Unit) {
+      const csvLabel = key === 'new_members' ? (l: string) => l : labeller;
       const data: unknown[][] = [[transText('col_label'), transText(UNIT_COL[unit])]];
-      rows.forEach((r) => data.push([String(labeller(r.label)), r.visits]));
+      rows.forEach((r) => data.push([String(csvLabel(r.label)), r.visits]));
       downloadCsv(`birdseye-${key}-${this.range}.csv`, toCsv(data));
     }
 
@@ -349,7 +350,7 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
       push(totals, transText('bounce_rate'), t.bounce_rate === null ? '' : Math.round(t.bounce_rate * 100) / 100);
       push(totals, transText('avg_visit'), t.avg_session_sec === null ? '' : Math.round(t.avg_session_sec));
       push(totals, transText('posts'), t.posts);
-      push(totals, transText('new_members'), t.registrations);
+      push(totals, transText('signups'), t.registrations);
 
       const perDay = transText('visitors_per_day');
       block.timeseries.forEach((p) => push(perDay, p.date, p.visits));
@@ -363,18 +364,13 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
         [transText('devices'), block.devices, (l) => l || transText('unknown')],
         [transText('countries'), block.locations, countryName],
         [transText('unanswered'), this.unanswered, (l) => l],
+        // ISO dates, not shortDate() — a spreadsheet can sort these.
+        [transText('new_members'), block.new_members, (l) => l],
       ];
 
       breakdowns.forEach(([name, list, labeller]) => list.forEach((r) => push(name, String(labeller(r.label)), r.visits)));
 
       downloadCsv(`birdseye-report-${this.range}.csv`, toCsv(rows));
-    }
-
-    /** Weekly activation cohorts as CSV (week, joined, converted, %). */
-    exportActivation() {
-      const data: unknown[][] = [[transText('col_week'), transText('joined_word'), transText('col_converted'), transText('col_activation_pct')]];
-      this.activation.forEach((w) => data.push([w.week, w.joined, w.converted, w.pct === null ? '' : Math.round(w.pct * 100)]));
-      downloadCsv(`birdseye-activation-${this.range}.csv`, toCsv(data));
     }
 
     /** Wrap a row label in a link to the content it describes, when the server
@@ -496,31 +492,8 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
           stat(trans('visitors'), d.visits),
           stat(trans('pageviews'), d.pageviews),
           stat(trans('posts'), d.posts),
-          stat(trans('new_members'), d.registrations),
+          stat(trans('signups'), d.registrations),
         ]),
-      ]);
-    }
-
-    /**
-     * Weekly lurker→poster cohorts: bar = share of that week's new members
-     * who posted within 7 days of joining.
-     */
-    activationCard() {
-      const rows = this.activation;
-      const anyJoined = rows.some((w) => w.joined > 0);
-
-      return m('.BirdseyeDashboard-card', [
-        this.cardTitleEl(trans('activation'), null, anyJoined ? () => this.exportActivation() : null),
-        anyJoined
-          ? rows.map((w) =>
-              m('.BirdseyeDashboard-row', [
-                m('.BirdseyeDashboard-rowBar', { style: { width: `${Math.round((w.pct || 0) * 100)}%` } }),
-                m('span.BirdseyeDashboard-rowLabel', `${shortDate(w.week)} · ${w.joined} ${transText('joined_word')}`),
-                m('span.BirdseyeDashboard-rowValue', w.pct === null ? '—' : `${Math.round(w.pct * 100)}%`),
-              ])
-            )
-          : m('p.helpText', trans('no_data')),
-        anyJoined ? m('p.helpText.BirdseyeDashboard-note', trans('activation_help')) : null,
       ]);
     }
 
@@ -608,8 +581,20 @@ function trans(key: string): Mithril.Children {
   return app.translator.trans(`linkrobins-birdseye.lib.dashboard.${key}`);
 }
 
-function transText(key: string): string {
-  return String(app.translator.trans(`linkrobins-birdseye.lib.dashboard.${key}`));
+function transText(key: string, params: Record<string, unknown> = {}): string {
+  return flattenTrans(app.translator.trans(`linkrobins-birdseye.lib.dashboard.${key}`, params));
+}
+
+/**
+ * A parameterised translation comes back as an array of parts, not a string.
+ * String() on that joins with commas ("2, of ,3, signups") — and we can't use
+ * core's extractText, because 2.0's `trans(id, params, true)` overload doesn't
+ * exist on 1.8 and this bundle deliberately imports nothing from flarum/*.
+ */
+function flattenTrans(v: unknown): string {
+  if (Array.isArray(v)) return v.map(flattenTrans).join('');
+  if (v && typeof v === 'object') return flattenTrans((v as { children?: unknown }).children);
+  return v === undefined || v === null ? '' : String(v);
 }
 
 function shortDate(iso: string): string {
