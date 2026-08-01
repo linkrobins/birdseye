@@ -43,6 +43,9 @@ const DEFAULT_VIEW_MODE: ViewMode = 'bars';
 const MAP_MAX_ZOOM = 8;
 /** Per click of the zoom buttons, and per double-click on the expanded map. */
 const MAP_ZOOM_STEP = 1.6;
+/** How far a finger may travel and still count as a tap on a country rather
+ *  than a pan. A held finger drifts a pixel or two on its own. */
+const MAP_TAP_SLOP = 8;
 
 // Sticky header choices live in localStorage, not in a user preference: they're
 // per-screen viewing state, and this bundle deliberately carries no flarum/*
@@ -147,6 +150,13 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
     mapPointers = new Map<number, { x: number; y: number }>();
     mapDrag: { x: number; y: number } | null = null;
     mapPinch: { dist: number; cx: number; cy: number } | null = null;
+    /** The country tooltip, reachable from both the hover and the tap paths. */
+    mapTip: HTMLElement | null = null;
+    /** The country the tooltip is currently naming, kept lit while it is up. */
+    mapTipPath: SVGPathElement | null = null;
+    /** The single pointer that might turn out to be a tap: where it is now, and
+     *  how far it has travelled since it went down. */
+    mapTap: { id: number; x: number; y: number; moved: number } | null = null;
 
     oninit(vnode: Mithril.Vnode) {
       super.oninit(vnode);
@@ -559,11 +569,13 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
       if (!el.querySelector('svg')) {
         el.innerHTML = this.mapMarkup;
         el.style.position = 'relative';
-        this.wireMapGestures(el);
 
         const tip = document.createElement('div');
         tip.className = 'BirdseyeDashboard-mapTip';
         el.appendChild(tip);
+        this.mapTip = tip;
+
+        this.wireMapGestures(el);
 
         const svg = el.querySelector('svg')!;
         svg.querySelectorAll('path').forEach((p) => {
@@ -575,27 +587,18 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
         });
 
         svg.addEventListener('pointermove', (e) => {
-          const p = (e.target as Element).closest('path') as SVGPathElement | null;
+          // Only a cursor tracks the map. A finger has no hover to follow, and
+          // its pointer is destroyed the moment it lifts, so touch raises the
+          // tooltip on the tap itself (see wireMapGestures).
+          if (e.pointerType !== 'mouse') return;
           // A tooltip chasing the cursor mid-drag reads as a stuck label, and
           // it would name whichever country slid under the pointer anyway.
-          if (!p || this.mapPointers.size) {
-            tip.style.display = 'none';
-            return;
-          }
-          const v = parseInt(p.dataset.v || '0', 10);
-          tip.textContent = '';
-          tip.appendChild(Object.assign(document.createElement('strong'), { textContent: p.dataset.name || '' }));
-          tip.appendChild(document.createElement('br'));
-          tip.appendChild(document.createTextNode(v ? `${v} ${transText('visitors_word')} · ${p.dataset.p}%` : transText('no_visitors')));
-          tip.style.display = 'block';
-          const r = el.getBoundingClientRect();
-          const x = e.clientX - r.left;
-          const flip = x > r.width / 2;
-          tip.style.left = flip ? '' : `${x + 14}px`;
-          tip.style.right = flip ? `${r.width - x + 14}px` : '';
-          tip.style.top = `${e.clientY - r.top + 12}px`;
+          if (this.mapPointers.size) this.hideMapTip();
+          else this.showMapTip(e.clientX, e.clientY);
         });
-        svg.addEventListener('pointerleave', () => (tip.style.display = 'none'));
+        svg.addEventListener('pointerleave', (e) => {
+          if (e.pointerType === 'mouse') this.hideMapTip();
+        });
       }
 
       const svg = el.querySelector('svg');
@@ -625,6 +628,53 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
       // handlers); re-assert the current zoom so it survives one. The inline
       // card never zooms, so it is left with no transform at all.
       if (this.mapExpanded) this.applyMapTransform(el, svg as SVGSVGElement);
+    }
+
+    /**
+     * Name the country at a point on screen, or hide the tooltip if that point
+     * is not on one. Hit-tested rather than read off the event target: a
+     * gesture holds a pointer capture on the container, so the country's own
+     * path never sees the events that end it.
+     */
+    showMapTip(clientX: number, clientY: number, tapped = false) {
+      const el = this.mapEl;
+      const tip = this.mapTip;
+      if (!el || !tip) return;
+
+      const hit = document.elementFromPoint(clientX, clientY);
+      const p = (hit ? hit.closest('path') : null) as SVGPathElement | null;
+      if (!p || !el.contains(p)) return this.hideMapTip();
+
+      // Light the country up for as long as it is named: a finger leaves no
+      // hover behind, so without this the label points at nothing.
+      if (this.mapTipPath !== p) {
+        this.mapTipPath?.classList.remove('is-named');
+        p.classList.add('is-named');
+        this.mapTipPath = p;
+      }
+
+      const v = parseInt(p.dataset.v || '0', 10);
+      tip.textContent = '';
+      tip.appendChild(Object.assign(document.createElement('strong'), { textContent: p.dataset.name || '' }));
+      tip.appendChild(document.createElement('br'));
+      tip.appendChild(document.createTextNode(v ? `${v} ${transText('visitors_word')} · ${p.dataset.p}%` : transText('no_visitors')));
+      tip.style.display = 'block';
+
+      const r = el.getBoundingClientRect();
+      const x = clientX - r.left;
+      const y = clientY - r.top;
+      const flip = x > r.width / 2;
+      tip.style.left = flip ? '' : `${x + 14}px`;
+      tip.style.right = flip ? `${r.width - x + 14}px` : '';
+      // A fingertip covers what it just touched, so a tapped tooltip sits above
+      // the tap; a cursor is small enough to have one hang below it.
+      tip.style.top = tapped ? `${Math.max(0, y - tip.offsetHeight - 16)}px` : `${y + 12}px`;
+    }
+
+    hideMapTip() {
+      if (this.mapTip) this.mapTip.style.display = 'none';
+      this.mapTipPath?.classList.remove('is-named');
+      this.mapTipPath = null;
     }
 
     /**
@@ -664,6 +714,11 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
       });
 
       el.addEventListener('pointerdown', (e) => {
+        // Tracked on the card as well as full screen: tap-to-read is the only
+        // way to name a country without a cursor, wherever the map is drawn.
+        this.mapTap = e.isPrimary ? { id: e.pointerId, x: e.clientX, y: e.clientY, moved: 0 } : null;
+        this.hideMapTip();
+
         if (!this.mapExpanded) return;
         this.mapPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         // Capture so a drag that runs off the map (or off the window) keeps
@@ -678,6 +733,13 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
       });
 
       el.addEventListener('pointermove', (e) => {
+        const tap = this.mapTap;
+        if (tap && tap.id === e.pointerId) {
+          tap.moved += Math.hypot(e.clientX - tap.x, e.clientY - tap.y);
+          tap.x = e.clientX;
+          tap.y = e.clientY;
+        }
+
         if (!this.mapPointers.has(e.pointerId)) return;
         this.mapPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -701,6 +763,23 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
       });
 
       const endPointer = (e: PointerEvent) => {
+        const tap = this.mapTap;
+        this.mapTap = null;
+        // A finger that lifts where it landed is asking to read that country.
+        // Raised here rather than on the move, and left up afterwards, because
+        // lifting also destroys the pointer: there is no later event to show it
+        // in, and pointerleave arrives immediately behind pointerup.
+        if (
+          tap &&
+          tap.id === e.pointerId &&
+          e.type === 'pointerup' &&
+          e.pointerType !== 'mouse' &&
+          tap.moved <= MAP_TAP_SLOP &&
+          this.mapPointers.size <= 1
+        ) {
+          this.showMapTip(e.clientX, e.clientY, true);
+        }
+
         if (!this.mapPointers.delete(e.pointerId)) return;
         try {
           el.releasePointerCapture(e.pointerId);
@@ -762,6 +841,8 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
       this.mapPointers.clear();
       this.mapDrag = null;
       this.mapPinch = null;
+      this.mapTap = null;
+      this.hideMapTip();
       this.resetMapZoom();
 
       document.body.classList.remove('birdseye-mapExpanded');
@@ -849,6 +930,10 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
 
     /** Zoom keeping whatever sits at (cx, cy) under that same point. */
     zoomMapAt(el: HTMLElement, svg: SVGSVGElement, factor: number, cx: number, cy: number) {
+      // A tapped tooltip is pinned to a place on the screen, not to its
+      // country, so it has to go the moment the map moves under it.
+      this.hideMapTip();
+
       const from = this.mapScale;
       const to = Math.min(Math.max(from * factor, 1), MAP_MAX_ZOOM);
       if (to === from) return;

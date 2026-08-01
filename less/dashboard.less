@@ -357,14 +357,20 @@
       stroke: none;
       transition: fill 0.2s;
 
-      &:hover {
+      // is-named marks the country the tooltip is currently naming, the only
+      // marker there is on a touchscreen, where the tap leaves no hover behind.
+      &:hover,
+      &.is-named {
         fill: rgba(128, 144, 160, 0.45);
       }
 
       &[data-v] {
         cursor: default;
 
-        &:hover {
+        // Countries with visitors are filled inline, so a fill rule can't
+        // reach them; brighten what is already there instead.
+        &:hover,
+        &.is-named {
           filter: brightness(1.25);
         }
       }
