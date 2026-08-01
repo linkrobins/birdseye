@@ -340,10 +340,17 @@
     font-variant-numeric: tabular-nums;
   }
 
+  &-map {
+    overflow: hidden;
+  }
+
   &-map svg {
     width: 100%;
     height: auto;
     display: block;
+    // Zooming scales from the map's own top-left, which is what the offset
+    // maths in applyMapTransform() assumes.
+    transform-origin: 0 0;
 
     path {
       fill: rgba(128, 144, 160, 0.25);
@@ -364,6 +371,62 @@
     }
   }
 
+  // The expanded map (d/39605/41): a fixed overlay, with real browser
+  // fullscreen laid on top of it where that API exists. Both routes land on
+  // these same rules, so the two look identical — the browser one just takes
+  // the address bar with it.
+  &-mapCard.is-expanded {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    // Above the forum modal the dashboard may be rendered inside. 1.8 and 2.0
+    // both set --zindex-modal to 1050; the fallback covers neither having run.
+    z-index: ~"calc(var(--zindex-modal, 1050) + 100)";
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    // Fullscreen elements get an opaque UA background, and the overlay needs
+    // one regardless — the page must not show through the ocean.
+    background: var(--body-bg);
+    display: flex;
+    flex-direction: column;
+
+    // Full screen is where a phone reaches these, so give them a real tap
+    // target rather than the card's deliberately quiet 12px icon.
+    .BirdseyeDashboard-export {
+      font-size: 16px;
+      padding: 8px 10px;
+    }
+
+    .BirdseyeDashboard-map {
+      flex: 1 1 auto;
+      // Without this a flex item refuses to shrink below its content, and the
+      // map would push its own bottom edge off the screen.
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      // Drag to pan, pinch to zoom: the browser must not claim the touch first.
+      touch-action: none;
+      cursor: grab;
+
+      &:active {
+        cursor: grabbing;
+      }
+
+      svg {
+        // Fit the screen whichever way round it is, keeping the aspect ratio,
+        // so the offsets clamp against the map itself rather than a letterbox.
+        width: auto;
+        height: auto;
+        max-width: 100%;
+        max-height: 100%;
+      }
+    }
+  }
+
   &-mapTip {
     position: absolute;
     display: none;
@@ -378,5 +441,21 @@
     line-height: 1.5;
     white-space: nowrap;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  }
+}
+
+// While the map is expanded, hold the page behind it still and free the
+// overlay from the forum modal it may be sitting inside: core leaves
+// `transform: scale(1)` on .Modal after the open animation, which makes the
+// modal the containing block for anything positioned fixed, and .Modal-content
+// clips what overflows it. Both are undone the moment the map closes.
+body.birdseye-mapExpanded {
+  overflow: hidden;
+
+  .ModalManager,
+  .Modal,
+  .Modal-content {
+    transform: none !important;
+    overflow: visible !important;
   }
 }

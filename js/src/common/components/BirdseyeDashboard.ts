@@ -38,6 +38,12 @@ type ViewMode = (typeof VIEW_MODES)[number];
 const DEFAULT_RANGE: RangeKey = '30d';
 const DEFAULT_VIEW_MODE: ViewMode = 'bars';
 
+/** How far the expanded map zooms in. Eight times fit-width is enough to read
+ *  the small island states that vanish at card size (d/39605/41). */
+const MAP_MAX_ZOOM = 8;
+/** Per click of the zoom buttons, and per double-click on the expanded map. */
+const MAP_ZOOM_STEP = 1.6;
+
 // Sticky header choices live in localStorage, not in a user preference: they're
 // per-screen viewing state, and this bundle deliberately carries no flarum/*
 // import and makes no write requests (see common/compat.ts). Reads and writes
@@ -126,6 +132,21 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
      *  Toggled from the header; applies to every list at once. */
     viewMode: ViewMode = readPref('viewMode', VIEW_MODES, DEFAULT_VIEW_MODE);
     mapMarkup: string | null = null;
+
+    /** Whether the world map has taken over the screen. At card size the map is
+     *  a couple of hundred pixels tall, which is where small countries and
+     *  islands disappear (d/39605/41). */
+    mapExpanded = false;
+    /** Zoom and pan of the expanded map: 1 = fitted, offsets in CSS pixels. */
+    mapScale = 1;
+    mapX = 0;
+    mapY = 0;
+    /** The map container, kept so the controls can reach the SVG. */
+    mapEl: HTMLElement | null = null;
+    /** Pointers currently down on the map: one drags, two pinch. */
+    mapPointers = new Map<number, { x: number; y: number }>();
+    mapDrag: { x: number; y: number } | null = null;
+    mapPinch: { dist: number; cx: number; cy: number } | null = null;
 
     oninit(vnode: Mithril.Vnode) {
       super.oninit(vnode);
@@ -254,14 +275,42 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
           this.card('new_members', trans('new_members'), block.new_members, shortDate, 'members'),
         ]),
 
-        m('.BirdseyeDashboard-card', [
-          m('.BirdseyeDashboard-cardTitle', trans('world')),
-          m('.BirdseyeDashboard-map', {
-            oncreate: (v: Mithril.VnodeDOM) => this.mountMap(v.dom as HTMLElement),
-            onupdate: (v: Mithril.VnodeDOM) => this.mountMap(v.dom as HTMLElement),
-          }),
-        ]),
+        m(
+          '.BirdseyeDashboard-card.BirdseyeDashboard-mapCard',
+          // A class rather than a second selector: changing the selector would
+          // make Mithril replace the element, throwing away the mounted SVG and
+          // its listeners every time the map is expanded or closed.
+          { className: this.mapExpanded ? 'is-expanded' : '' },
+          [
+            m('.BirdseyeDashboard-cardTitle', [
+              m('span.BirdseyeDashboard-cardTitleText', trans('world')),
+              m('.BirdseyeDashboard-cardTitleRight', this.mapMarkup ? this.mapControls() : null),
+            ]),
+            m('.BirdseyeDashboard-map', {
+              oncreate: (v: Mithril.VnodeDOM) => this.mountMap(v.dom as HTMLElement),
+              onupdate: (v: Mithril.VnodeDOM) => this.mountMap(v.dom as HTMLElement),
+            }),
+          ]
+        ),
       ]);
+    }
+
+    /** The map card's own controls: expand/close, plus zoom buttons once
+     *  expanded. The wheel and pinch gestures cover the same ground, but a
+     *  button is the only route for a keyboard user or a plain mouse. */
+    mapControls(): Mithril.Children {
+      const btn = (icon: string, key: string, onclick: () => void) =>
+        m('button.BirdseyeDashboard-export', { type: 'button', title: transText(key), 'aria-label': transText(key), onclick }, m('i.fas.' + icon));
+
+      return [
+        this.mapExpanded
+          ? [
+              btn('fa-search-minus', 'zoom_out', () => this.zoomMap(1 / MAP_ZOOM_STEP)),
+              btn('fa-search-plus', 'zoom_in', () => this.zoomMap(MAP_ZOOM_STEP)),
+            ]
+          : null,
+        this.mapExpanded ? btn('fa-compress', 'map_collapse', () => this.collapseMap()) : btn('fa-expand', 'map_expand', () => this.expandMap()),
+      ];
     }
 
     tile(label: Mithril.Children, value: string) {
@@ -505,9 +554,12 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
     mountMap(el: HTMLElement) {
       if (!this.mapMarkup) return;
 
+      this.mapEl = el;
+
       if (!el.querySelector('svg')) {
         el.innerHTML = this.mapMarkup;
         el.style.position = 'relative';
+        this.wireMapGestures(el);
 
         const tip = document.createElement('div');
         tip.className = 'BirdseyeDashboard-mapTip';
@@ -524,7 +576,9 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
 
         svg.addEventListener('pointermove', (e) => {
           const p = (e.target as Element).closest('path') as SVGPathElement | null;
-          if (!p) {
+          // A tooltip chasing the cursor mid-drag reads as a stuck label, and
+          // it would name whichever country slid under the pointer anyway.
+          if (!p || this.mapPointers.size) {
             tip.style.display = 'none';
             return;
           }
@@ -566,8 +620,288 @@ export default function makeBirdseyeDashboard(Component: any, LoadingIndicator: 
           delete el2.dataset.p;
         }
       });
+
+      // A redraw can arrive mid-gesture (the zoom buttons are Mithril
+      // handlers); re-assert the current zoom so it survives one. The inline
+      // card never zooms, so it is left with no transform at all.
+      if (this.mapExpanded) this.applyMapTransform(el, svg as SVGSVGElement);
+    }
+
+    /**
+     * Wheel, drag, and pinch on the map — expanded only. On the inline card the
+     * wheel must keep scrolling the page: a map that swallowed the scroll
+     * halfway down the dashboard would be a trap, not a feature.
+     */
+    wireMapGestures(el: HTMLElement) {
+      const svg = () => el.querySelector('svg') as SVGSVGElement | null;
+
+      el.addEventListener(
+        'wheel',
+        (e) => {
+          const s = svg();
+          if (!this.mapExpanded || !s) return;
+          e.preventDefault();
+          // deltaMode 1 counts lines and 2 counts pages; normalise to pixels so
+          // one notch zooms by about the same amount in every browser.
+          const px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
+          this.zoomMapAt(el, s, Math.pow(0.9985, px), e.clientX, e.clientY);
+        },
+        { passive: false }
+      );
+
+      // Double-click expands from the card (Tutrix asked to click the map
+      // itself, d/39605/41) and steps the zoom once expanded, wrapping back to
+      // fitted at the top so there is always a way out without the buttons.
+      el.addEventListener('dblclick', (e) => {
+        const s = svg();
+        if (!this.mapExpanded) {
+          this.expandMap();
+          m.redraw();
+        } else if (s) {
+          if (this.mapScale >= MAP_MAX_ZOOM) this.resetMapZoom();
+          else this.zoomMapAt(el, s, MAP_ZOOM_STEP, e.clientX, e.clientY);
+        }
+      });
+
+      el.addEventListener('pointerdown', (e) => {
+        if (!this.mapExpanded) return;
+        this.mapPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        // Capture so a drag that runs off the map (or off the window) keeps
+        // reporting, and so its pointerup still arrives here.
+        try {
+          el.setPointerCapture(e.pointerId);
+        } catch {
+          // Capture is a nicety; the gesture still works without it.
+        }
+        this.mapDrag = this.mapPointers.size === 1 ? { x: e.clientX, y: e.clientY } : null;
+        this.mapPinch = this.mapPointers.size >= 2 ? this.pinchState() : null;
+      });
+
+      el.addEventListener('pointermove', (e) => {
+        if (!this.mapPointers.has(e.pointerId)) return;
+        this.mapPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+        const s = svg();
+        if (!s) return;
+
+        if (this.mapPointers.size >= 2) {
+          const now = this.pinchState();
+          const prev = this.mapPinch;
+          if (now && prev && prev.dist > 0) {
+            // Zoom on the point between the fingers, then let that point's own
+            // drift pan the map, so a pinch can move and scale in one gesture.
+            this.zoomMapAt(el, s, now.dist / prev.dist, prev.cx, prev.cy);
+            this.panMap(el, s, now.cx - prev.cx, now.cy - prev.cy);
+          }
+          this.mapPinch = now;
+        } else if (this.mapDrag) {
+          this.panMap(el, s, e.clientX - this.mapDrag.x, e.clientY - this.mapDrag.y);
+          this.mapDrag = { x: e.clientX, y: e.clientY };
+        }
+      });
+
+      const endPointer = (e: PointerEvent) => {
+        if (!this.mapPointers.delete(e.pointerId)) return;
+        try {
+          el.releasePointerCapture(e.pointerId);
+        } catch {
+          // Already released with the pointer itself.
+        }
+        // Lifting one finger of a pinch leaves the other mid-drag: restart the
+        // drag from where that finger is now, or the map jumps.
+        const rest = this.mapPointers.values().next().value;
+        this.mapDrag = this.mapPointers.size === 1 && rest ? { x: rest.x, y: rest.y } : null;
+        this.mapPinch = this.mapPointers.size >= 2 ? this.pinchState() : null;
+      };
+
+      el.addEventListener('pointerup', endPointer);
+      el.addEventListener('pointercancel', endPointer);
+    }
+
+    /** Distance between the first two pointers, and the point between them. */
+    pinchState(): { dist: number; cx: number; cy: number } | null {
+      const pts = Array.from(this.mapPointers.values());
+      if (pts.length < 2) return null;
+      const [a, b] = pts;
+      return { dist: Math.hypot(b.x - a.x, b.y - a.y), cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+    }
+
+    /**
+     * Take over the screen. Real browser fullscreen goes on top where the API
+     * exists, so the address bar and tabs go too — but the fixed overlay does
+     * the actual work and never depends on that call landing, because iPhone
+     * Safari still has no fullscreen for anything but a <video>.
+     */
+    expandMap() {
+      if (this.mapExpanded) return;
+
+      this.mapExpanded = true;
+      this.resetMapZoom();
+
+      document.body.classList.add('birdseye-mapExpanded');
+      document.addEventListener('keydown', this.onMapKeydown, true);
+      document.addEventListener('fullscreenchange', this.onFullscreenChange);
+      window.addEventListener('resize', this.onMapResize);
+
+      const card = this.mapEl?.closest('.BirdseyeDashboard-mapCard') as (HTMLElement & { webkitRequestFullscreen?: () => void }) | null;
+
+      try {
+        const req = card?.requestFullscreen?.() ?? card?.webkitRequestFullscreen?.();
+        // A rejected request (an iframe without the permission, a browser that
+        // wants a different gesture) is fine — the overlay is already up.
+        if (req && typeof (req as Promise<void>).catch === 'function') (req as Promise<void>).catch(() => {});
+      } catch {
+        // Same again for the browsers that throw instead of rejecting.
+      }
+    }
+
+    collapseMap() {
+      if (!this.mapExpanded) return;
+
+      this.mapExpanded = false;
+      this.mapPointers.clear();
+      this.mapDrag = null;
+      this.mapPinch = null;
+      this.resetMapZoom();
+
+      document.body.classList.remove('birdseye-mapExpanded');
+      document.removeEventListener('keydown', this.onMapKeydown, true);
+      document.removeEventListener('keyup', this.onMapKeyup, true);
+      document.removeEventListener('fullscreenchange', this.onFullscreenChange);
+      window.removeEventListener('resize', this.onMapResize);
+
+      try {
+        const doc = document as Document & { webkitFullscreenElement?: Element; webkitExitFullscreen?: () => void };
+        if (doc.fullscreenElement) document.exitFullscreen();
+        else if (doc.webkitFullscreenElement) doc.webkitExitFullscreen?.();
+      } catch {
+        // Nothing to leave, or the browser refused — the overlay is down either
+        // way, which is what the reader sees.
+      }
+    }
+
+    /** Escape closes the map. Capture phase and stopPropagation on purpose: on
+     *  the forum side the dashboard sits in a modal whose own Escape handler
+     *  would otherwise close the whole thing out from under the map. */
+    onMapKeydown = (e: KeyboardEvent) => {
+      if (!this.mapExpanded || e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.collapseMap();
+      // After collapsing, because collapseMap() clears this listener too: core
+      // closes its modal on the key coming back *up* (verified on 1.8, and on
+      // 2.0 wherever the browser has no CloseWatcher), so the one press that
+      // closed the map has to be swallowed at both ends.
+      document.addEventListener('keyup', this.onMapKeyup, true);
+      m.redraw();
+    };
+
+    onMapKeyup = (e: KeyboardEvent) => {
+      document.removeEventListener('keyup', this.onMapKeyup, true);
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    /** Leaving native fullscreen by any other route — Escape handled by the
+     *  browser, its own control, a gesture — has to drop the overlay too, or
+     *  the map is left covering a page nobody asked it to cover. */
+    onFullscreenChange = () => {
+      const doc = document as Document & { webkitFullscreenElement?: Element };
+      if (this.mapExpanded && !doc.fullscreenElement && !doc.webkitFullscreenElement) {
+        this.collapseMap();
+        m.redraw();
+      }
+    };
+
+    /** A rotated phone or a resized window changes what "fitted" means, and a
+     *  pan clamped to the old size would leave the map hanging off an edge. */
+    onMapResize = () => {
+      const svg = this.mapEl?.querySelector('svg') as SVGSVGElement | null;
+      if (this.mapEl && svg) this.applyMapTransform(this.mapEl, svg);
+    };
+
+    onremove(vnode: Mithril.VnodeDOM) {
+      // The modal can be closed (or the admin page navigated away from) while
+      // the map is expanded; the body class and the document listeners must not
+      // outlive the component that put them there.
+      this.collapseMap();
+      super.onremove?.(vnode);
+    }
+
+    resetMapZoom() {
+      this.mapScale = 1;
+      this.mapX = 0;
+      this.mapY = 0;
+      const svg = this.mapEl?.querySelector('svg') as SVGSVGElement | null;
+      if (svg) svg.style.transform = '';
+    }
+
+    /** Zoom about the middle of the map — what the buttons use, since they have
+     *  no cursor to zoom towards. */
+    zoomMap(factor: number) {
+      const el = this.mapEl;
+      const svg = el?.querySelector('svg') as SVGSVGElement | null;
+      if (!el || !svg) return;
+      const r = el.getBoundingClientRect();
+      this.zoomMapAt(el, svg, factor, r.left + r.width / 2, r.top + r.height / 2);
+    }
+
+    /** Zoom keeping whatever sits at (cx, cy) under that same point. */
+    zoomMapAt(el: HTMLElement, svg: SVGSVGElement, factor: number, cx: number, cy: number) {
+      const from = this.mapScale;
+      const to = Math.min(Math.max(from * factor, 1), MAP_MAX_ZOOM);
+      if (to === from) return;
+
+      const r = svg.getBoundingClientRect();
+      const ratio = to / from;
+      // The map's left edge sits at (r.left - mapX) before the translate, so
+      // solving "anchor stays put" for the new offset gives this.
+      this.mapX = cx - ratio * (cx - r.left) - (r.left - this.mapX);
+      this.mapY = cy - ratio * (cy - r.top) - (r.top - this.mapY);
+      this.mapScale = to;
+
+      this.applyMapTransform(el, svg);
+    }
+
+    panMap(el: HTMLElement, svg: SVGSVGElement, dx: number, dy: number) {
+      if (this.mapScale === 1) return;
+      this.mapX += dx;
+      this.mapY += dy;
+      this.applyMapTransform(el, svg);
+    }
+
+    /**
+     * Write the zoom out to the SVG, then clamp it so the map can never be
+     * dragged off its own frame: an edge stays pinned once it is reached, and a
+     * map smaller than the frame re-centres itself.
+     */
+    applyMapTransform(el: HTMLElement, svg: SVGSVGElement) {
+      const write = () => (svg.style.transform = `translate(${this.mapX}px, ${this.mapY}px) scale(${this.mapScale})`);
+
+      write();
+
+      // Measure after writing: the rect has to reflect the transform we are
+      // clamping, and the un-translated edge is then just rect minus offset.
+      const frame = el.getBoundingClientRect();
+      const r = svg.getBoundingClientRect();
+      const x = clampAxis(this.mapX, r.left - this.mapX, r.width, frame.left, frame.width);
+      const y = clampAxis(this.mapY, r.top - this.mapY, r.height, frame.top, frame.height);
+
+      if (x !== this.mapX || y !== this.mapY) {
+        this.mapX = x;
+        this.mapY = y;
+        write();
+      }
     }
   };
+}
+
+/** Clamp one axis of the map's offset: fill the frame while the map is bigger
+ *  than it, centre it once it is not. */
+function clampAxis(offset: number, edge: number, size: number, frameStart: number, frameSize: number): number {
+  if (size <= frameSize) return frameStart + (frameSize - size) / 2 - edge;
+  return Math.min(Math.max(offset, frameStart + frameSize - edge - size), frameStart - edge);
 }
 
 // Categorical donut palette — the brand cyan leads, then hues chosen to stay
