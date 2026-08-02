@@ -6,15 +6,3 @@ parameters:
     paths:
         - extend.php
         - src
-    ignoreErrors:
-        # The 1.x serialization branch in extend.php: these symbols exist only
-        # on Flarum 1.x installs, while analysis runs against the 2.x vendor
-        # tree. Both references sit behind a class_exists(ForumResource::class)
-        # guard that is only taken on a 1.x install.
-        - '#Flarum\\Extend\\ApiSerializer#'
-        - '#Flarum\\Api\\Serializer\\ForumSerializer#'
-        # RequestUtil::isInternal() exists only on 2.x, so against the 2.x
-        # vendor tree method_exists() is provably always true. On 1.8 the method
-        # is absent and the guard is load-bearing: it is a deliberate
-        # cross-major shim, not dead code.
-        - '#method_exists\(\) with .*RequestUtil.* and .*isInternal.* will always evaluate to true#'

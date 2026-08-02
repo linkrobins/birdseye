@@ -1,7 +1,6 @@
 <?php
 
 use Flarum\Api\Resource\ForumResource;
-use Flarum\Api\Serializer\ForumSerializer;
 use Flarum\Extend;
 use Flarum\Post\Event\Posted;
 use Flarum\Settings\Event\Saved;
@@ -16,25 +15,12 @@ use LinkRobins\Birdseye\Console\SyncCommand;
 use LinkRobins\Birdseye\Listener\RecordPosted;
 use LinkRobins\Birdseye\Listener\RecordRegistered;
 use LinkRobins\Birdseye\Listener\SendHelloOnKeyChange;
-use LinkRobins\Birdseye\Permissions;
 
-// The forum field telling the frontend whether to offer the Analytics entry
-// (fail-closed). On 2.0 it is a resource field; on 1.8, where API resources
-// don't exist, the same attribute rides the legacy forum serializer. The
-// ternary evaluates only the branch for the running major, so Extend\ApiSerializer
-// (removed in 2.0) and Extend\ApiResource (absent in 1.8) are each referenced
-// only where they exist.
-$forumField = class_exists(ForumResource::class)
-    ? (new Extend\ApiResource(ForumResource::class))->fields(ForumFields::class)
-    : (new Extend\ApiSerializer(ForumSerializer::class))->attributes(function ($serializer, $model, array $attributes): array {
-        try {
-            $attributes['birdseyeCanViewStats'] = $serializer->getActor()->hasPermission(Permissions::VIEW_STATS);
-        } catch (\Throwable) {
-            $attributes['birdseyeCanViewStats'] = false;
-        }
-
-        return $attributes;
-    });
+// The forum field telling the frontend whether to offer the Analytics entry.
+// It fails closed inside ForumFields: this ships on every forum response, so
+// anything thrown while reading the permission has to read as "no" rather than
+// 500 the boot payload.
+$forumField = (new Extend\ApiResource(ForumResource::class))->fields(ForumFields::class);
 
 return [
     (new Extend\Frontend('admin'))

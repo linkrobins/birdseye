@@ -1,6 +1,6 @@
 {
     "name": "linkrobins/birdseye",
-    "description": "Forum analytics for Flarum — server-side, zero JavaScript, no cookies. Your stats live in your own database.",
+    "description": "Forum analytics for Flarum \u2014 server-side, zero JavaScript, no cookies. Your stats live in your own database.",
     "type": "flarum-extension",
     "license": "MIT",
     "authors": [
@@ -15,7 +15,7 @@
     },
     "require": {
         "php": ">=8.0",
-        "flarum/core": ">=1.8.0 <3.0.0",
+        "flarum/core": "^2.0",
         "guzzlehttp/guzzle": "^7.0"
     },
     "require-dev": {
