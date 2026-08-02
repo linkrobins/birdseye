@@ -159,6 +159,10 @@ class DigestCommand extends AbstractCommand
         ];
     }
 
+    /**
+     * @param array<string, mixed> $week
+     * @param array<string, mixed> $prior
+     */
     protected function body(\DateTimeImmutable $start, \DateTimeImmutable $end, array $week, array $prior): string
     {
         $t = fn (string $key, array $params = []) => $this->translator->trans("linkrobins-birdseye.email.digest.{$key}", $params);
