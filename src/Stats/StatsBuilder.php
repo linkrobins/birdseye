@@ -65,6 +65,7 @@ class StatsBuilder
         ];
     }
 
+    /** @return array<string, mixed> */
     protected function range(int $days, User $actor): array
     {
         // Yesterday back — today's rollup doesn't exist until the day closes.

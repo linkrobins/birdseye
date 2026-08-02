@@ -41,6 +41,7 @@ class BufferedEvent extends AbstractModel
         'search_query',
     ];
 
+    /** @var array<string, string> */
     protected $casts = [
         'occurred_at' => 'datetime',
     ];

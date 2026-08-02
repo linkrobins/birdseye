@@ -25,6 +25,7 @@ class Rollup extends AbstractModel
 
     protected $guarded = [];
 
+    /** @var array<string, string> */
     protected $casts = [
         'date' => 'date',
     ];
