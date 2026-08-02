@@ -16,11 +16,10 @@ use Psr\Http\Server\RequestHandlerInterface;
  *
  * The split is load-bearing, not cosmetic: Flarum renders pages by firing
  * INTERNAL ApiClient subrequests through the api middleware stack, and
- * those inherit the parent's headers (Accept, proxy country, everything),
- * so no header heuristic can tell them apart from real traffic. The
- * deterministic discriminators: internal subrequests never traverse the
- * FORUM stack, and on the API stack they carry the first-party
- * RequestUtil::isInternal() attribute stamped by ApiClient.
+ * those inherit the parent's headers, so they arrive looking much like real
+ * traffic. What separates them here: an internal subrequest never traverses
+ * the FORUM stack, and on the API stack it carries the parent page's
+ * `Accept: text/html`, which genuine SPA navigation never asks for.
  *
  * Writes at most one buffer row per request, after the response is built,
  * and swallows its own failures — analytics must never break a request

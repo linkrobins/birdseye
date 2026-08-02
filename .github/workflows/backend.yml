@@ -4,9 +4,13 @@ on: [workflow_dispatch, push, pull_request]
 
 jobs:
   run:
-    uses: flarum/framework/.github/workflows/REUSABLE_backend.yml@2.x
+    uses: flarum/framework/.github/workflows/REUSABLE_backend.yml@1.x
     with:
       enable_backend_testing: true
       enable_phpstan: true
 
       backend_directory: .
+
+      # The 1.x workflow tests back to PHP 7.3 by default, which composer
+      # refuses against this extension's own `php: >=8.0`.
+      php_versions: '["8.0", "8.1", "8.2", "8.3", "8.4"]'

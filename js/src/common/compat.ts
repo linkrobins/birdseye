@@ -1,11 +1,12 @@
 /**
- * Dual-major compatibility shims.
+ * Core access for the Flarum 1.x line.
  *
- * Birdseye's frontend imports NOTHING from flarum/* so a single bundle runs on
- * both Flarum 1.8 (everything eager under flarum.core.compat) and Flarum 2.0
- * (lazy-chunk registry under flarum.reg). Every core value is resolved through
- * these feature-detecting helpers instead of an `import`, and mithril comes in
- * as the global `m` (webpack maps the one `mithril` import to window.m).
+ * Birdseye's frontend imports NOTHING from flarum/*: every core value is read
+ * off the `flarum.core.compat` map that 1.x populates eagerly, and mithril
+ * comes in as the global `m` (webpack maps the one `mithril` import to
+ * window.m). That keeps the bundle free of build-time coupling to core's
+ * module layout, which is what lets components be passed into factories rather
+ * than extended at import time.
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -13,64 +14,43 @@ declare const window: any;
 
 const unwrap = (mod: any): any => (mod && mod.default ? mod.default : mod);
 
+const compatMap = (): any => {
+  try {
+    const flarum = window.flarum;
+    return (flarum && flarum.core && flarum.core.compat) || undefined;
+  } catch (e) {
+    return undefined;
+  }
+};
+
 /**
  * Synchronously resolve a core module by its source path (e.g.
- * 'common/components/Modal'), or undefined if it isn't loaded. Reliable for the
- * eagerly-available base components Birdseye needs (Component, Modal, Button,
- * LoadingIndicator) on both majors.
+ * 'common/components/Modal'), or undefined if it isn't there. 1.x ships every
+ * module eagerly, so this is reliable for everything Birdseye needs
+ * (Component, Modal, Button, LoadingIndicator).
  */
 export function coreModule(path: string): any {
-  const flarum = window.flarum;
+  const compat = compatMap();
 
-  try {
-    if (flarum && flarum.reg && typeof flarum.reg.get === 'function') {
-      const mod = flarum.reg.get('core', path);
-      if (mod) return unwrap(mod);
-    }
-  } catch (e) {
-    /* fall through to the 1.x compat map */
-  }
-
-  try {
-    const compat = flarum && flarum.core && flarum.core.compat;
-    if (compat && compat[path]) return unwrap(compat[path]);
-  } catch (e) {
-    /* nothing to resolve */
-  }
-
-  return undefined;
+  return compat && compat[path] ? unwrap(compat[path]) : undefined;
 }
 
 /**
- * Run a callback once a core module is available (immediately if already
- * loaded). 2.0 waits on the registry's onLoad; 1.8 reads the eager compat map.
- * Used for patching page components (ExtensionPage, SessionDropdown) whose
- * chunks may load after this initializer on 2.0.
+ * Run a callback with a core module. Nothing is lazy on 1.x, so this resolves
+ * immediately. It stays a callback because the page components it patches
+ * (ExtensionPage, SessionDropdown) are reached the same way on the 2.x line,
+ * where their chunks may still be loading.
  */
 export function onCoreModule(path: string, cb: (mod: any) => void): void {
-  const flarum = window.flarum;
+  const mod = coreModule(path);
 
-  try {
-    if (flarum && flarum.reg && typeof flarum.reg.onLoad === 'function') {
-      flarum.reg.onLoad('core', path, (mod: any) => cb(unwrap(mod)));
-      return;
-    }
-  } catch (e) {
-    /* fall through */
-  }
-
-  try {
-    const compat = flarum && flarum.core && flarum.core.compat;
-    if (compat && compat[path]) cb(unwrap(compat[path]));
-  } catch (e) {
-    /* nothing to patch */
-  }
+  if (mod) cb(mod);
 }
 
 /**
  * extend()-style method wrap: run cb after the original, keeping the original's
- * return value. A local reimplementation so we don't import flarum/common/extend
- * (whose resolution differs across majors).
+ * return value. A local reimplementation so we don't import
+ * flarum/common/extend, which would couple the bundle to core's module layout.
  */
 export function extendMethod(proto: any, method: string, cb: (this: any, ret: any, ...args: any[]) => void): void {
   const original = proto[method];
@@ -95,9 +75,9 @@ export function overrideMethod(proto: any, method: string, cb: (this: any, origi
 }
 
 /**
- * The admin extension-data registry: app.registry on 2.0, app.extensionData on
- * 1.8. Both expose the same for(id).registerSetting()/registerPermission() API.
+ * The admin extension-data registry, which 1.x calls app.extensionData. It
+ * exposes the for(id).registerSetting()/registerPermission() API.
  */
 export function registry(app: any): any {
-  return app.registry || app.extensionData;
+  return app.extensionData;
 }

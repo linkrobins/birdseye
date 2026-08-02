@@ -1,8 +1,8 @@
-# Dual-major guard: the standard Backend workflow (REUSABLE_backend.yml@2.x)
-# only exercises Flarum 2.0. Birdseye also supports 1.8, so this installs a real
-# Flarum 1.8, drops the extension in, and asserts it enables, migrates, and
-# boots without fatalling — the class of check that catches 2.0-only APIs
-# leaking into the 1.8 path (e.g. an interface that doesn't exist there).
+# End-to-end guard for the 1.x line: the Backend workflow runs this extension's
+# own test suite, but never installs a forum. This builds a real Flarum 1.8,
+# drops the extension in, and asserts it enables, migrates, and boots without
+# fatalling — the class of check that catches a 2.0-only API surviving on this
+# branch (an interface that does not exist here, say).
 name: Flarum 1.8
 
 on: [workflow_dispatch, push, pull_request]
