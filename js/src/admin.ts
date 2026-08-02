@@ -1,18 +1,15 @@
-import { coreModule, onCoreModule, overrideMethod, registry } from './common/compat';
-import makeBirdseyeDashboard from './common/components/BirdseyeDashboard';
+import app from 'flarum/admin/app';
+import { override } from 'flarum/common/extend';
+import BirdseyeDashboard from './common/components/BirdseyeDashboard';
 
-// Dual-major admin bundle: imports nothing from flarum/*, resolving core values
-// from the runtime globals so one artifact runs on Flarum 1.8 and 2.0. See
-// common/compat.ts.
-declare const window: any;
+// Mithril is the global Flarum exposes, and core's own JSX compiles to these
+// same `m(...)` calls. Deliberately not imported: flarum-webpack-config does
+// not externalize mithril, so an import would bundle a second copy of it.
+const m = (window as any).m;
 
-window.app.initializers.add('linkrobins-birdseye', () => {
-  const app = window.app;
-  const m = window.m;
-
-  // Settings + the viewStats permission. The registry is app.registry on 2.0
-  // and app.extensionData on 1.8; both expose the same for(id) API.
-  registry(app)
+app.initializers.add('linkrobins-birdseye', () => {
+  // Settings + the viewStats permission.
+  app.registry
     .for('linkrobins-birdseye')
     .registerSetting({
       setting: 'linkrobins-birdseye.collect',
@@ -57,23 +54,18 @@ window.app.initializers.add('linkrobins-birdseye', () => {
       'view'
     );
 
-  // The dashboard extends the core Component base class, so it's built from the
-  // resolved base classes (both eagerly available on either major).
-  const BirdseyeDashboard = makeBirdseyeDashboard(coreModule('common/Component'), coreModule('common/components/LoadingIndicator'));
-
   // Render the dashboard BELOW the whole settings form (under the Save / Reset
   // buttons), not as a setting inside it. Appending to ExtensionPage's own
   // content keeps the buttons directly under the last setting and drops the
-  // dashboard beneath them. Guarded to Birdseye's page; patched through the core
-  // module registry so it is safe whether ExtensionPage loads eagerly (1.8) or
-  // lazily (2.0).
-  onCoreModule('admin/components/ExtensionPage', (ExtensionPage: any) => {
-    overrideMethod(ExtensionPage.prototype, 'content', function (this: any, original: (v: any) => any, vnode: any) {
-      const rendered = original(vnode);
+  // dashboard beneath them. Guarded to Birdseye's own page.
+  //
+  // Overridden BY STRING PATH so ExtensionPage's chunk stays lazy: a runtime
+  // import of the component would force it to load eagerly.
+  override('flarum/admin/components/ExtensionPage', 'content', function (this: any, original: (v: any) => any, vnode: any) {
+    const rendered = original(vnode);
 
-      if (!this.extension || this.extension.id !== 'linkrobins-birdseye') return rendered;
+    if (!this.extension || this.extension.id !== 'linkrobins-birdseye') return rendered;
 
-      return [rendered, m('div', { className: 'container' }, m(BirdseyeDashboard))];
-    });
+    return [rendered, m('div', { className: 'container' }, m(BirdseyeDashboard))];
   });
 });

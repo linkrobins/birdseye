@@ -1,30 +1,28 @@
-import m from 'mithril';
 import type Mithril from 'mithril';
+import app from 'flarum/forum/app';
+import Modal from 'flarum/common/components/Modal';
+import BirdseyeDashboard from '../../common/components/BirdseyeDashboard';
+
+// Mithril is the global Flarum exposes, and core's own JSX compiles to these
+// same `m(...)` calls. Deliberately not imported: flarum-webpack-config does
+// not externalize mithril, so an import would bundle a second copy of it.
+const m = (window as any).m;
 
 /**
  * The forum-side analytics view: the shared dashboard component inside a wide
  * modal. Opened from the session menu; only offered when the forum payload says
  * the actor holds the viewStats permission (the API enforces it regardless).
- *
- * Built through a factory so it never imports flarum/* directly: the core Modal
- * base class and the (already-built) dashboard component are passed in at
- * initializer time, letting one bundle run on Flarum 1.8 and 2.0. See
- * common/compat.ts.
  */
-export default function makeBirdseyeModal(Modal: any, BirdseyeDashboard: any): any {
-  const app = (window as any).app;
+export default class BirdseyeModal extends Modal {
+  className(): string {
+    return 'BirdseyeModal';
+  }
 
-  return class BirdseyeModal extends Modal {
-    className(): string {
-      return 'BirdseyeModal';
-    }
+  title(): Mithril.Children {
+    return app.translator.trans('linkrobins-birdseye.lib.dashboard.title');
+  }
 
-    title(): Mithril.Children {
-      return app.translator.trans('linkrobins-birdseye.lib.dashboard.title');
-    }
-
-    content(): Mithril.Children {
-      return m('.Modal-body', m(BirdseyeDashboard, { hideTitle: true }));
-    }
-  };
+  content(): Mithril.Children {
+    return m('.Modal-body', m(BirdseyeDashboard, { hideTitle: true }));
+  }
 }
