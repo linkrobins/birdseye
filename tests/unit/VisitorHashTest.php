@@ -25,6 +25,7 @@ class VisitorHashTest extends TestCase
         return new VisitorHash($settings);
     }
 
+    /** @test */
     #[Test]
     public function the_same_visitor_hashes_the_same_within_a_day(): void
     {
@@ -33,6 +34,7 @@ class VisitorHashTest extends TestCase
         $this->assertSame($h->make('203.0.113.7', 'UA/1'), $h->make('203.0.113.7', 'UA/1'));
     }
 
+    /** @test */
     #[Test]
     public function a_different_ip_or_user_agent_hashes_differently(): void
     {
@@ -43,6 +45,7 @@ class VisitorHashTest extends TestCase
         $this->assertNotSame($base, $h->make('203.0.113.7', 'UA/2'));
     }
 
+    /** @test */
     #[Test]
     public function the_hash_is_a_short_hex_digest_that_cannot_be_reversed_to_the_ip(): void
     {
@@ -53,12 +56,14 @@ class VisitorHashTest extends TestCase
         $this->assertStringNotContainsString('203.0.113', $out);
     }
 
+    /** @test */
     #[Test]
     public function ipv4_prefix_zeroes_the_last_octet(): void
     {
         $this->assertSame('203.0.113.0', $this->hash()->ipPrefix('203.0.113.7'));
     }
 
+    /** @test */
     #[Test]
     public function ipv6_prefix_keeps_only_the_first_48_bits(): void
     {
@@ -68,6 +73,7 @@ class VisitorHashTest extends TestCase
         $this->assertSame('2001:db8:abcd::', $prefix);
     }
 
+    /** @test */
     #[Test]
     public function a_non_ip_yields_no_prefix(): void
     {
