@@ -31,6 +31,7 @@ class StatsEndpointTest extends TestCase
         ]);
     }
 
+    /** @test */
     #[Test]
     public function guests_are_unauthorized(): void
     {
@@ -39,6 +40,7 @@ class StatsEndpointTest extends TestCase
         $this->assertEquals(401, $response->getStatusCode());
     }
 
+    /** @test */
     #[Test]
     public function members_without_the_permission_are_forbidden(): void
     {
@@ -47,6 +49,7 @@ class StatsEndpointTest extends TestCase
         $this->assertEquals(403, $response->getStatusCode());
     }
 
+    /** @test */
     #[Test]
     public function admins_get_the_dashboard_payload(): void
     {
@@ -67,6 +70,8 @@ class StatsEndpointTest extends TestCase
      * Someone who joined on a Sunday is counted on that Sunday. The card used
      * to bucket by week and label the row with the Monday, so every Sunday
      * signup read six days early (discuss.flarum.org d/39605/34).
+     *
+     * @test
      */
     #[Test]
     public function a_new_member_is_counted_on_the_day_they_registered(): void
@@ -85,6 +90,8 @@ class StatsEndpointTest extends TestCase
      * An account that never confirmed its email isn't a member — Flarum grants
      * the Member group off is_email_confirmed, so an unconfirmed account has
      * guest permissions (d/39605/37). It still shows in the Signups tile.
+     *
+     * @test
      */
     #[Test]
     public function unconfirmed_signups_are_not_counted_as_members(): void
@@ -131,6 +138,7 @@ class StatsEndpointTest extends TestCase
         ]);
     }
 
+    /** @test */
     #[Test]
     public function a_group_granted_view_stats_may_read_it(): void
     {
@@ -144,6 +152,7 @@ class StatsEndpointTest extends TestCase
         $this->assertEquals(200, $response->getStatusCode());
     }
 
+    /** @test */
     #[Test]
     public function the_world_map_endpoint_is_gated_the_same_way(): void
     {
@@ -151,6 +160,7 @@ class StatsEndpointTest extends TestCase
         $this->assertEquals(200, $this->send($this->request('GET', '/api/birdseye/world-map', ['authenticatedAs' => 1]))->getStatusCode());
     }
 
+    /** @test */
     #[Test]
     public function the_forum_resource_advertises_view_permission_fail_closed(): void
     {

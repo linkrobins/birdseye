@@ -73,6 +73,7 @@ class CaptureClassifyTest extends TestCase
 
     // --- forum stack ---
 
+    /** @test */
     #[Test]
     public function the_forum_stack_counts_an_html_page_load(): void
     {
@@ -83,6 +84,7 @@ class CaptureClassifyTest extends TestCase
         $this->assertSame('/', $event['path']);
     }
 
+    /** @test */
     #[Test]
     public function the_forum_stack_normalizes_a_discussion_path(): void
     {
@@ -92,6 +94,7 @@ class CaptureClassifyTest extends TestCase
         $this->assertSame(42, $event['discussion_id']);
     }
 
+    /** @test */
     #[Test]
     public function the_forum_stack_ignores_non_html_requests(): void
     {
@@ -101,6 +104,7 @@ class CaptureClassifyTest extends TestCase
 
     // --- api stack ---
 
+    /** @test */
     #[Test]
     public function the_api_stack_counts_real_spa_navigation(): void
     {
@@ -111,6 +115,7 @@ class CaptureClassifyTest extends TestCase
         $this->assertSame(42, $event['discussion_id']);
     }
 
+    /** @test */
     #[Test]
     public function the_api_stack_counts_a_search(): void
     {
@@ -121,6 +126,7 @@ class CaptureClassifyTest extends TestCase
         $this->assertSame('hello', $event['search_query']);
     }
 
+    /** @test */
     #[Test]
     public function the_api_stack_drops_the_internal_prefill_that_inherits_text_html(): void
     {
@@ -131,6 +137,7 @@ class CaptureClassifyTest extends TestCase
         $this->assertNull($this->api()->classifyPublic($this->req('/discussions', 'text/html', ['filter' => ['q' => 'hello']])));
     }
 
+    /** @test */
     #[Test]
     public function the_api_stack_ignores_unrelated_paths(): void
     {
@@ -140,6 +147,7 @@ class CaptureClassifyTest extends TestCase
 
     // --- shared heuristics ---
 
+    /** @test */
     #[Test]
     public function bots_are_recognised_by_their_user_agent(): void
     {
@@ -151,6 +159,7 @@ class CaptureClassifyTest extends TestCase
         $this->assertFalse($f->isBotPublic('Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120 Safari/537.36'));
     }
 
+    /** @test */
     #[Test]
     public function the_device_class_comes_from_the_user_agent(): void
     {
@@ -161,6 +170,7 @@ class CaptureClassifyTest extends TestCase
         $this->assertSame('desktop', $f->devicePublic('Mozilla/5.0 (Windows NT 10.0) Chrome/120'));
     }
 
+    /** @test */
     #[Test]
     public function a_same_site_referrer_is_not_a_referral(): void
     {

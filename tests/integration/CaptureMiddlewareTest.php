@@ -49,6 +49,7 @@ class CaptureMiddlewareTest extends TestCase
             ->withHeader('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120 Safari/537.36');
     }
 
+    /** @test */
     #[Test]
     public function a_real_page_load_is_recorded_once(): void
     {
@@ -57,6 +58,7 @@ class CaptureMiddlewareTest extends TestCase
         $this->assertSame(1, $this->events());
     }
 
+    /** @test */
     #[Test]
     public function bots_and_non_document_requests_are_not_recorded(): void
     {
@@ -68,6 +70,7 @@ class CaptureMiddlewareTest extends TestCase
         $this->assertSame(0, $this->events());
     }
 
+    /** @test */
     #[Test]
     public function the_internal_prefill_of_a_discussion_page_is_not_double_counted(): void
     {
@@ -79,6 +82,7 @@ class CaptureMiddlewareTest extends TestCase
         $this->assertSame(0, $this->events());
     }
 
+    /** @test */
     #[Test]
     public function real_spa_navigation_to_a_discussion_is_recorded(): void
     {
