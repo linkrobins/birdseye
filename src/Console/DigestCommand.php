@@ -13,8 +13,9 @@ use LinkRobins\Birdseye\Rollup\Rollup;
 use Symfony\Component\Console\Input\InputOption;
 
 /**
- * Weekly plain-text summary of the last full week (Mon–Sun UTC), mailed to
- * confirmed-email admins. Scheduled Monday mornings (see extend.php); a
+ * Weekly summary of the last full week (Mon–Sun UTC), mailed to
+ * confirmed-email admins as multipart HTML + plain text — the HTML part rides
+ * core's branded email layout so it matches the forum's other mail. Scheduled Monday mornings (see extend.php); a
  * settings row remembers the last week sent so a re-run or a second server
  * firing the scheduler can't double-send. Entirely local — reads rollups,
  * never the network. Best-effort like all of Birdseye: a broken mail setup
@@ -75,6 +76,7 @@ class DigestCommand extends AbstractCommand
         }
 
         $body = $this->body($weekStart, $weekEnd, $week, $prior);
+        $viewData = $this->viewData($weekStart, $weekEnd, $week, $prior, $body);
         $subject = $this->translator->trans('linkrobins-birdseye.email.digest.subject', [
             '{forum}' => (string) $this->settings->get('forum_title'),
             '{visitors}' => number_format($week['visitors']),
@@ -91,9 +93,16 @@ class DigestCommand extends AbstractCommand
 
         foreach ($recipients as $recipient) {
             try {
-                $this->mailer->raw($body, function ($message) use ($recipient, $subject) {
-                    $message->to($recipient->email)->subject($subject);
-                });
+                $this->mailer->send(
+                    [
+                        'html' => 'linkrobins-birdseye::email.digest-html',
+                        'text' => 'linkrobins-birdseye::email.digest-plain',
+                    ],
+                    $viewData,
+                    function ($message) use ($recipient, $subject) {
+                        $message->to($recipient->email)->subject($subject);
+                    }
+                );
                 $sent++;
             } catch (\Throwable $e) {
                 $this->error("Digest to {$recipient->email} failed: {$e->getMessage()}");
@@ -199,6 +208,58 @@ class DigestCommand extends AbstractCommand
         $lines[] = $t('footer');
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * Structured data for the HTML email view: stat rows (label / count /
+     * change with a sentiment colour) and the top-content lines. The plain
+     * part reuses the classic text body verbatim.
+     *
+     * @param array<string, mixed> $week
+     * @param array<string, mixed> $prior
+     * @return array<string, mixed>
+     */
+    protected function viewData(\DateTimeImmutable $start, \DateTimeImmutable $end, array $week, array $prior, string $plainBody): array
+    {
+        $t = fn (string $key, array $params = []) => $this->translator->trans("linkrobins-birdseye.email.digest.{$key}", $params);
+
+        $stat = function (string $labelKey, string $metric) use ($t, $week, $prior): array {
+            $change = $this->change($week[$metric], $prior[$metric]);
+
+            return [
+                'label' => $t($labelKey),
+                'count' => number_format($week[$metric]),
+                'change' => $change,
+                'color' => str_starts_with($change, '+') ? '#2e7d32'
+                    : (str_starts_with($change, '-') ? '#c62828' : '#999999'),
+            ];
+        };
+
+        return [
+            'title' => $t('heading', [
+                '{forum}' => (string) $this->settings->get('forum_title'),
+                '{start}' => $start->format('M j'),
+                '{end}' => $end->format('M j'),
+            ]),
+            'stats' => [
+                $stat('visitors_label', 'visitors'),
+                $stat('pageviews_label', 'pageviews'),
+                $stat('posts_label', 'posts'),
+                $stat('registrations_label', 'registrations'),
+            ],
+            'topDiscussionLabel' => $t('top_discussion_label'),
+            'topSearchLabel' => $t('top_search_label'),
+            'topDiscussion' => $week['topDiscussion'] === null ? null : [
+                'label' => $week['topDiscussion']['label'],
+                'suffix' => $t('views_suffix', ['{views}' => number_format($week['topDiscussion']['visits'])]),
+            ],
+            'topSearch' => $week['topSearch'] === null ? null : [
+                'label' => $week['topSearch']['label'],
+                'suffix' => $t('searches_suffix', ['{count}' => number_format($week['topSearch']['visits'])]),
+            ],
+            'footerText' => $t('footer'),
+            'plainBody' => $plainBody,
+        ];
     }
 
     /** "+23%", "-4%", "±0%" — or an em dash when the prior week has no baseline. */

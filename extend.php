@@ -45,6 +45,11 @@ return [
 
     new Extend\Locales(__DIR__ . '/locale'),
 
+    // Email views for the weekly digest (HTML + plain multipart, rendered
+    // through core's branded x-mail layout so it matches the forum's other
+    // emails — issue: the digest used to go out as bare mailer->raw text).
+    (new Extend\View())->namespace('linkrobins-birdseye', __DIR__ . '/views'),
+
     // Capture: 'forum' sees full page loads, 'api' sees the SPA's JSON:API
     // navigation (discussion show, search). Distinct classes per stack —
     // internal ApiClient subrequests inherit the parent's headers, so the
