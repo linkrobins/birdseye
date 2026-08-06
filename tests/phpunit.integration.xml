@@ -3,8 +3,6 @@
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../vendor/phpunit/phpunit/phpunit.xsd"
     backupGlobals="false"
-    backupStaticProperties="false"
-    cacheDirectory=".phpunit.cache"
     colors="true"
     processIsolation="true"
     stopOnFailure="false">
