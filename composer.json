@@ -2,6 +2,8 @@
     "name": "linkrobins/birdseye",
     "description": "Forum analytics for Flarum \u2014 server-side, zero JavaScript, no cookies. Your stats live in your own database.",
     "type": "flarum-extension",
+    "keywords": ["flarum", "analytics", "statistics", "privacy", "dashboard"],
+    "homepage": "https://linkrobins.com/extensions/birdseye",
     "license": "MIT",
     "authors": [
         {
