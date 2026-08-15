@@ -1,6 +1,7 @@
 import app from 'flarum/admin/app';
 import { override } from 'flarum/common/extend';
 import BirdseyeDashboard from './common/components/BirdseyeDashboard';
+import BirdseyeStatus from './common/components/BirdseyeStatus';
 
 // Mithril is the global Flarum exposes, and core's own JSX compiles to these
 // same `m(...)` calls. Deliberately not imported: flarum-webpack-config does
@@ -11,6 +12,10 @@ app.initializers.add('linkrobins-birdseye', () => {
   // Settings + the viewStats permission.
   app.registry
     .for('linkrobins-birdseye')
+    // Above everything, because the first thing an owner wants to know on this
+    // page is whether their key is working. Same banner as Warble, Chirp and
+    // Forage.
+    .registerSetting(() => m(BirdseyeStatus), 100, 'status')
     .registerSetting({
       setting: 'linkrobins-birdseye.collect',
       type: 'switch',

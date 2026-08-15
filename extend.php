@@ -7,6 +7,7 @@ use Flarum\Settings\Event\Saved;
 use Flarum\User\Event\Registered;
 use LinkRobins\Birdseye\Api\ForumFields;
 use LinkRobins\Birdseye\Api\StatsHandler;
+use LinkRobins\Birdseye\Api\StatusHandler;
 use LinkRobins\Birdseye\Api\WorldMapHandler;
 use LinkRobins\Birdseye\Capture\ApiCaptureMiddleware;
 use LinkRobins\Birdseye\Capture\ForumCaptureMiddleware;
@@ -41,7 +42,11 @@ return [
     // viewStats permission (admins always pass).
     (new Extend\Routes('api'))
         ->get('/birdseye/stats', 'birdseye.stats', StatsHandler::class)
-        ->get('/birdseye/world-map', 'birdseye.world-map', WorldMapHandler::class),
+        ->get('/birdseye/world-map', 'birdseye.world-map', WorldMapHandler::class)
+        // Admin only: whether the saved key actually works, answered by
+        // Birdseye rather than guessed from whether a background push
+        // happened to succeed.
+        ->get('/birdseye/status', 'birdseye.status', StatusHandler::class),
 
     new Extend\Locales(__DIR__ . '/locale'),
 
@@ -91,6 +96,10 @@ return [
         // with a license key; without one the sync command rolls up basic
         // counts locally and never phones out.
         ->default('linkrobins-birdseye.endpoint', 'https://linkrobins.com/api/birdseye/process')
+        // Where the settings page asks whether the saved key is any good.
+        // Hidden for the same reason as the endpoint above: customers never
+        // change it, and support can when something moves.
+        ->default('linkrobins-birdseye.status_endpoint', 'https://linkrobins.com/api/birdseye/status')
         ->default('linkrobins-birdseye.license_key', '')
         // Monday email to admins summarizing last week's rollups. Local
         // only; skips silently when the week has no data.
