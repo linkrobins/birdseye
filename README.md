@@ -83,5 +83,5 @@ without checking the 1.8 leg of CI.
 ## Links
 
 - [Birdseye subscriptions](https://linkrobins.com/birdseye)
-- [Support forum](https://linkrobins.com/forum)
+- [Support](https://github.com/linkrobins/birdseye/issues)
 - [Source on GitHub](https://github.com/linkrobins/birdseye)
