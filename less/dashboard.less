@@ -465,3 +465,55 @@ body.birdseye-mapExpanded {
     overflow: visible !important;
   }
 }
+
+.BirdseyeDashboard-historyCard {
+  // The table spans every metric column, so on phones the card scrolls
+  // sideways inside itself rather than stretching the page.
+  .BirdseyeDashboard-historyScroll {
+    overflow-x: auto;
+  }
+
+  .BirdseyeDashboard-cardTitleRight .Button.is-active {
+    font-weight: bold;
+    text-decoration: underline;
+  }
+}
+
+.BirdseyeDashboard-historyTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+
+  th,
+  td {
+    padding: 6px 10px;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  th:first-child,
+  td:first-child {
+    text-align: left;
+  }
+
+  thead th {
+    color: var(--muted-color);
+    font-weight: normal;
+    border-bottom: 1px solid var(--control-bg);
+  }
+
+  tbody tr + tr td {
+    border-top: 1px solid var(--control-bg);
+  }
+}
+
+.BirdseyeDashboard-historyLabel {
+  font-weight: bold;
+}
+
+.BirdseyeDashboard-historyPartial {
+  margin-left: 6px;
+  font-weight: normal;
+  color: var(--muted-color);
+  font-size: 11px;
+}
