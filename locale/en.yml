@@ -5,6 +5,10 @@ linkrobins-birdseye:
     dashboard:
       title: Analytics
       range_7d: 7 days
+      history: History
+      by_month: Months
+      by_year: Years
+      so_far: so far
       range_30d: 30 days
       visitors: Visitors
       pageviews: Pageviews

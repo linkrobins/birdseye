@@ -25,7 +25,7 @@ class SyncCommand extends AbstractCommand
     {
         $this
             ->setName('birdseye:sync')
-            ->setDescription('Push buffered analytics events for processing (or roll up locally when unkeyed) and prune the buffer');
+            ->setDescription('Roll up buffered analytics events locally and prune the buffer');
     }
 
     protected function fire(): int
