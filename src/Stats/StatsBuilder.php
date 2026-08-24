@@ -15,10 +15,9 @@ use LinkRobins\Birdseye\Rollup\Rollup;
  * renders one well-known structure. Everything here reads the forum's OWN
  * database; nothing leaves the server.
  *
- * The forum-health blocks (today, new members, unanswered, tags) are computed
- * entirely locally too — they need no license key and no processor round
- * trip, which is the point: the free tier should already feel like a forum
- * tool, not a generic pageview counter.
+ * The forum-health blocks (today, new members, unanswered, tags) read the
+ * live tables rather than rollups, which is the point: Birdseye should feel
+ * like a forum tool, not a generic pageview counter.
  */
 class StatsBuilder
 {

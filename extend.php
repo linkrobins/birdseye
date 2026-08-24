@@ -3,11 +3,9 @@
 use Flarum\Api\Resource\ForumResource;
 use Flarum\Extend;
 use Flarum\Post\Event\Posted;
-use Flarum\Settings\Event\Saved;
 use Flarum\User\Event\Registered;
 use LinkRobins\Birdseye\Api\ForumFields;
 use LinkRobins\Birdseye\Api\StatsHandler;
-use LinkRobins\Birdseye\Api\StatusHandler;
 use LinkRobins\Birdseye\Api\WorldMapHandler;
 use LinkRobins\Birdseye\Capture\ApiCaptureMiddleware;
 use LinkRobins\Birdseye\Capture\ForumCaptureMiddleware;
@@ -15,7 +13,6 @@ use LinkRobins\Birdseye\Console\DigestCommand;
 use LinkRobins\Birdseye\Console\SyncCommand;
 use LinkRobins\Birdseye\Listener\RecordPosted;
 use LinkRobins\Birdseye\Listener\RecordRegistered;
-use LinkRobins\Birdseye\Listener\SendHelloOnKeyChange;
 
 // The forum field telling the frontend whether to offer the Analytics entry.
 // It fails closed inside ForumFields: this ships on every forum response, so
@@ -42,11 +39,7 @@ return [
     // viewStats permission (admins always pass).
     (new Extend\Routes('api'))
         ->get('/birdseye/stats', 'birdseye.stats', StatsHandler::class)
-        ->get('/birdseye/world-map', 'birdseye.world-map', WorldMapHandler::class)
-        // Admin only: whether the saved key actually works, answered by
-        // Birdseye rather than guessed from whether a background push
-        // happened to succeed.
-        ->get('/birdseye/status', 'birdseye.status', StatusHandler::class),
+        ->get('/birdseye/world-map', 'birdseye.world-map', WorldMapHandler::class),
 
     new Extend\Locales(__DIR__ . '/locale'),
 
@@ -66,11 +59,7 @@ return [
 
     (new Extend\Event())
         ->listen(Posted::class, RecordPosted::class)
-        ->listen(Registered::class, RecordRegistered::class)
-        // Saving a license key fires an immediate first-contact check-in so
-        // the key binds (and shows as connected on the customer dashboard)
-        // within seconds instead of after the first complete-day sync.
-        ->listen(Saved::class, SendHelloOnKeyChange::class),
+        ->listen(Registered::class, RecordRegistered::class),
 
     (new Extend\Console())
         ->command(SyncCommand::class)
@@ -90,17 +79,11 @@ return [
         // Kill-switch: collection can be paused without disabling the
         // extension (existing rollups keep rendering).
         ->default('linkrobins-birdseye.collect', true)
-        // Where batches are pushed for processing. Deliberately NOT exposed
-        // in the admin UI — customers never change it; it stays a hidden
-        // setting so dev/staging can override it manually. Only meaningful
-        // with a license key; without one the sync command rolls up basic
-        // counts locally and never phones out.
-        ->default('linkrobins-birdseye.endpoint', 'https://linkrobins.com/api/birdseye/process')
-        // Where the settings page asks whether the saved key is any good.
-        // Hidden for the same reason as the endpoint above: customers never
-        // change it, and support can when something moves.
-        ->default('linkrobins-birdseye.status_endpoint', 'https://linkrobins.com/api/birdseye/status')
-        ->default('linkrobins-birdseye.license_key', '')
+        // Optional path to a MaxMind country database (e.g. GeoLite2-Country
+        // .mmdb) for resolving visitor country when no trusted proxy supplies
+        // a country header. Downloaded by the admin under their own MaxMind
+        // account; everything is looked up locally.
+        ->default('linkrobins-birdseye.geoip_db_path', '')
         // Monday email to admins summarizing last week's rollups. Local
         // only; skips silently when the week has no data.
         ->default('linkrobins-birdseye.weekly_digest', true)

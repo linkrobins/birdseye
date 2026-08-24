@@ -1,7 +1,6 @@
 import app from 'flarum/admin/app';
 import { override } from 'flarum/common/extend';
 import BirdseyeDashboard from './common/components/BirdseyeDashboard';
-import BirdseyeStatus from './common/components/BirdseyeStatus';
 
 // Mithril is the global Flarum exposes, and core's own JSX compiles to these
 // same `m(...)` calls. Deliberately not imported: flarum-webpack-config does
@@ -12,10 +11,6 @@ app.initializers.add('linkrobins-birdseye', () => {
   // Settings + the viewStats permission.
   app.registry
     .for('linkrobins-birdseye')
-    // Above everything, because the first thing an owner wants to know on this
-    // page is whether their key is working. Same banner as Warble, Chirp and
-    // Forage.
-    .registerSetting(() => m(BirdseyeStatus), 100, 'status')
     .registerSetting({
       setting: 'linkrobins-birdseye.collect',
       type: 'switch',
@@ -23,16 +18,17 @@ app.initializers.add('linkrobins-birdseye', () => {
       help: app.translator.trans('linkrobins-birdseye.admin.settings.collect_help'),
     })
     .registerSetting({
-      setting: 'linkrobins-birdseye.license_key',
-      type: 'text',
-      label: app.translator.trans('linkrobins-birdseye.admin.settings.license_key_label'),
-      help: app.translator.trans('linkrobins-birdseye.admin.settings.license_key_help'),
-    })
-    .registerSetting({
       setting: 'linkrobins-birdseye.geo_ip_prefix',
       type: 'switch',
       label: app.translator.trans('linkrobins-birdseye.admin.settings.geo_ip_prefix_label'),
       help: app.translator.trans('linkrobins-birdseye.admin.settings.geo_ip_prefix_help'),
+    })
+    .registerSetting({
+      setting: 'linkrobins-birdseye.geoip_db_path',
+      type: 'text',
+      placeholder: '/path/to/GeoLite2-Country.mmdb',
+      label: app.translator.trans('linkrobins-birdseye.admin.settings.geoip_db_path_label'),
+      help: app.translator.trans('linkrobins-birdseye.admin.settings.geoip_db_path_help'),
     })
     .registerSetting({
       setting: 'linkrobins-birdseye.country_header',
