@@ -90,7 +90,7 @@ class SyncBatchJob extends AbstractJob implements ShouldBeUnique
             $rollups = $processor->process($day, $events);
 
             foreach ($rollups as $r) {
-                Rollup::put($r['date'], $r['metric'], $r['key'] ?? '', (int) $r['value']);
+                Rollup::put($r['date'], $r['metric'], $r['key'], (int) $r['value']);
             }
 
             // Only now is the day consumed. Chunked delete, no long lock.
