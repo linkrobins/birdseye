@@ -115,6 +115,22 @@ class LocalProcessorTest extends TestCase
      * @test
      */
     #[Test]
+    public function a_generator_produces_the_same_rollups_as_an_array()
+    {
+        // The sync job feeds a generator so a large day is never materialized;
+        // the aggregation must not care which it gets.
+        $fromArray = (new LocalProcessor())->process('2026-08-20', $this->day());
+        $fromGenerator = (new LocalProcessor())->process('2026-08-20', (function () {
+            yield from $this->day();
+        })());
+
+        $this->assertSame($fromArray, $fromGenerator);
+    }
+
+    /**
+     * @test
+     */
+    #[Test]
     public function an_unparseable_timestamp_is_a_pageview_but_never_a_session()
     {
         $events = $this->day();
