@@ -23,6 +23,13 @@ use MaxMind\Db\Reader;
  */
 class SyncBatchJob extends AbstractJob implements ShouldBeUnique
 {
+    /**
+     * Note on ShouldBeUnique: in Flarum's stack it is decorative — the lock
+     * acquisition lives in illuminate/foundation, which Flarum doesn't ship,
+     * so no dispatch path ever takes it. The real overlap guard is the
+     * scheduler's withoutOverlapping()/onOneServer() on the sync command.
+     * The interface stays for queue setups that do honor it.
+     */
     public int $tries = 3;
 
     public int $timeout = 120;
@@ -60,22 +67,25 @@ class SyncBatchJob extends AbstractJob implements ShouldBeUnique
                 ->toBase()
                 ->cursor();
 
-            $events = [];
-
-            foreach ($rows as $row) {
-                $events[] = [
-                    'at' => substr((string) $row->occurred_at, 11, 8),
-                    'type' => $row->type,
-                    'path' => $row->path,
-                    'discussion_id' => $row->discussion_id,
-                    'visitor' => $row->visitor,
-                    'country' => $row->country,
-                    'referrer' => $row->referrer,
-                    'device' => $row->device,
-                    'ip_prefix' => $row->ip_prefix,
-                    'q' => $row->search_query,
-                ];
-            }
+            // A generator, not an array: a 100k-event day must never be
+            // materialized on shared-hosting memory limits. The processor
+            // aggregates in one pass and retains only its running tallies.
+            $events = (function () use ($rows) {
+                foreach ($rows as $row) {
+                    yield [
+                        'at' => substr((string) $row->occurred_at, 11, 8),
+                        'type' => $row->type,
+                        'path' => $row->path,
+                        'discussion_id' => $row->discussion_id,
+                        'visitor' => $row->visitor,
+                        'country' => $row->country,
+                        'referrer' => $row->referrer,
+                        'device' => $row->device,
+                        'ip_prefix' => $row->ip_prefix,
+                        'q' => $row->search_query,
+                    ];
+                }
+            })();
 
             $rollups = $processor->process($day, $events);
 

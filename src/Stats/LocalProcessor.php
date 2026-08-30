@@ -47,12 +47,20 @@ class LocalProcessor
     }
 
     /**
-     * @param array<int, array<string, mixed>> $events
+     * One pass, streaming: `$events` may be a generator, and nothing about a
+     * view is retained beyond the running tallies — a 100k-event day costs
+     * the same memory as a 100-event one (the per-visitor second-lists for
+     * sessionization are the only per-event growth, and they hold one int
+     * per view).
+     *
+     * @param iterable<int, array<string, mixed>> $events
      * @return array<int, array{date: string, metric: string, key: string, value: int}>
      */
-    public function process(string $date, array $events): array
+    public function process(string $date, iterable $events): array
     {
-        $views = [];
+        $pageviews = 0;
+        $visitorSet = [];
+        $byVisitor = [];
         $posts = 0;
         $registrations = 0;
         $lists = array_fill_keys(['page', 'discussion', 'search'], []);
@@ -86,7 +94,9 @@ class LocalProcessor
                 continue;
             }
 
-            $views[] = $e;
+            $pageviews++;
+
+            $this->collectForSessions($byVisitor, $visitorSet, $e);
 
             if (($path = (string) ($e['path'] ?? '')) !== '') {
                 $this->bump($lists['page'], mb_substr($path, 0, 150));
@@ -113,16 +123,13 @@ class LocalProcessor
             }
         }
 
-        [$sessions, $bounces, $seconds] = $this->sessionize($views);
+        [$sessions, $bounces, $seconds] = $this->sessionize($byVisitor);
 
-        $visitors = count(array_unique(array_filter(array_map(
-            fn ($v) => (string) ($v['visitor'] ?? ''),
-            $views
-        ), fn ($h) => $h !== '')));
+        $visitors = count($visitorSet);
 
         $rollups = [
             ['date' => $date, 'metric' => 'visitors', 'key' => '', 'value' => $visitors],
-            ['date' => $date, 'metric' => 'pageviews', 'key' => '', 'value' => count($views)],
+            ['date' => $date, 'metric' => 'pageviews', 'key' => '', 'value' => $pageviews],
             ['date' => $date, 'metric' => 'sessions', 'key' => '', 'value' => $sessions],
             ['date' => $date, 'metric' => 'bounce_sessions', 'key' => '', 'value' => $bounces],
             ['date' => $date, 'metric' => 'session_seconds', 'key' => '', 'value' => $seconds],
@@ -153,30 +160,44 @@ class LocalProcessor
     }
 
     /**
-     * 30-minute-gap sessionization over the day's views, per visitor.
-     * Returns [sessions, bounce_sessions, total_session_seconds]. Views
-     * without a visitor hash can't be sessionized and are skipped here
-     * (they still count as pageviews).
+     * Fold one view into the visitor set and the per-visitor second-lists the
+     * sessionizer runs over. Views without a visitor hash join neither (they
+     * still counted as pageviews); an unparseable timestamp still marks the
+     * visitor as seen but cannot open a session.
      *
-     * @param array<int, array<string, mixed>> $views
-     * @return array{0: int, 1: int, 2: int}
+     * @param array<string, array<int, int>> $byVisitor
+     * @param array<string, true> $visitorSet
+     * @param array<string, mixed> $e
      */
-    protected function sessionize(array $views): array
+    protected function collectForSessions(array &$byVisitor, array &$visitorSet, array $e): void
     {
-        $byVisitor = [];
+        $visitor = (string) ($e['visitor'] ?? '');
 
-        foreach ($views as $v) {
-            $visitor = (string) ($v['visitor'] ?? '');
-            $at = (string) ($v['at'] ?? '');
-
-            if ($visitor === '' || !preg_match('/^\d{2}:\d{2}:\d{2}$/', $at)) {
-                continue;
-            }
-
-            [$h, $m, $s] = explode(':', $at);
-            $byVisitor[$visitor][] = ((int) $h) * 3600 + ((int) $m) * 60 + (int) $s;
+        if ($visitor === '') {
+            return;
         }
 
+        $visitorSet[$visitor] = true;
+
+        $at = (string) ($e['at'] ?? '');
+
+        if (!preg_match('/^\d{2}:\d{2}:\d{2}$/', $at)) {
+            return;
+        }
+
+        [$h, $m, $s] = explode(':', $at);
+        $byVisitor[$visitor][] = ((int) $h) * 3600 + ((int) $m) * 60 + (int) $s;
+    }
+
+    /**
+     * 30-minute-gap sessionization over the per-visitor second-lists.
+     * Returns [sessions, bounce_sessions, total_session_seconds].
+     *
+     * @param array<string, array<int, int>> $byVisitor
+     * @return array{0: int, 1: int, 2: int}
+     */
+    protected function sessionize(array $byVisitor): array
+    {
         $sessions = $bounces = $seconds = 0;
 
         foreach ($byVisitor as $times) {
