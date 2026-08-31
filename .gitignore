@@ -1,4 +1,4 @@
-js/node_modules
+js/node_modules/
 js/dist/*.map
 js/dist-typings/
 vendor/
@@ -6,4 +6,7 @@ composer.lock
 .phpunit.cache
 tests/.phpunit.cache
 tests/integration/tmp
+
+# PHPUnit writes this on every run; it is machine state, not source.
+.phpunit.result.cache
 tests/.phpunit.result.cache
