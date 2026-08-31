@@ -8,6 +8,7 @@ use Flarum\Group\Group;
 use Flarum\Locale\Translator;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\User\User;
+use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Contracts\Mail\Mailer;
 use LinkRobins\Birdseye\Rollup\Rollup;
@@ -199,22 +200,25 @@ class DigestCommand extends AbstractCommand
      * lock until it expires blocks it instead, and by then any newer process
      * has loaded the marker for itself.
      *
-     * A store with no lock support throws rather than returning false, and
-     * Birdseye never lets infrastructure break a best-effort feature, so that
-     * case runs unlocked exactly as before.
+     * Locking lives on the STORE, not on the cache repository — the Repository
+     * contract has never declared lock(). A store that cannot lock (array, and
+     * some third-party drivers) runs unlocked exactly as before, because
+     * Birdseye never lets infrastructure break a best-effort feature.
      *
      * @param callable(): int $callback
      */
     protected function whileHoldingWeek(string $weekKey, callable $callback): int
     {
-        try {
-            // Long enough to cover a straggling scheduler and a slow SMTP
-            // server; short enough that a killed process frees the week again
-            // well before there is anything new to send.
-            $lock = $this->cache->lock("linkrobins-birdseye.digest.{$weekKey}", 600);
-        } catch (\Throwable $e) {
+        $store = $this->cache->getStore();
+
+        if (!$store instanceof LockProvider) {
             return $callback();
         }
+
+        // Long enough to cover a straggling scheduler and a slow SMTP server;
+        // short enough that a killed process frees the week again well before
+        // there is anything new to send.
+        $lock = $store->lock("linkrobins-birdseye.digest.{$weekKey}", 600);
 
         if (!$lock->get()) {
             $this->info("Week {$weekKey} is already being sent, or was just sent, by another process.");
