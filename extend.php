@@ -73,8 +73,10 @@ return [
             $event->hourly()->onOneServer()->withoutOverlapping();
         })
         ->command(DigestCommand::class)
-        // Monday morning UTC; the command's own sent-marker makes a second
-        // firing (or a multi-node race) a no-op.
+        // Monday morning UTC. onOneServer() here is a first line only — it is
+        // advisory and needs a shared cache — so the command takes its own
+        // cache lock around the send. Its sent-marker alone cannot stop a
+        // second firing: it is read before the work and written after it.
         ->schedule(DigestCommand::class, function ($event) {
             $event->weeklyOn(1, '7:30')->onOneServer()->withoutOverlapping();
         }),

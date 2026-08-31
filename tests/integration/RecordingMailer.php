@@ -53,6 +53,19 @@ class RecordingMailer implements Mailer
         return $this->record($callback);
     }
 
+    /**
+     * Only illuminate 8 declares this, and only illuminate 13 declares cc()
+     * and sendNow(). Implementing the union of the two contracts is what lets
+     * one double serve both Flarum lines; the extra methods are inert on
+     * whichever line does not ask for them.
+     *
+     * @return list<string>
+     */
+    public function failures()
+    {
+        return [];
+    }
+
     private function record($callback): void
     {
         if (! is_callable($callback)) {
