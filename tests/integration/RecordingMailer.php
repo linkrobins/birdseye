@@ -10,13 +10,16 @@
 namespace LinkRobins\Birdseye\Tests\integration;
 
 use Illuminate\Contracts\Mail\Mailer;
-use Illuminate\Mail\Message;
-use Symfony\Component\Mime\Email;
 
 /**
  * Stands in for Flarum's mailer and records who each message was addressed to.
- * Counting deliveries is the whole point of DigestCommandTest, and Flarum's
- * real mailer would need a working transport to count anything.
+ * Counting deliveries is the whole point of DigestCommandTest, and the real
+ * mailer would need a working transport to count anything.
+ *
+ * The callback is handed a small recorder rather than Illuminate's Message on
+ * purpose: on the 1.x line Message wraps Swift_Message and on 2.x it wraps a
+ * Symfony Email, so touching it would make this double line-specific for no
+ * gain. The command only ever calls to() and subject().
  */
 class RecordingMailer implements Mailer
 {
@@ -50,21 +53,17 @@ class RecordingMailer implements Mailer
         return $this->record($callback);
     }
 
-    /**
-     * Run the caller's callback against a real Message so the recorded address
-     * is the one it actually set, not one this double guessed.
-     */
     private function record($callback): void
     {
         if (! is_callable($callback)) {
             return;
         }
 
-        $message = new Message(new Email());
-        $callback($message);
+        $recorder = new RecordedMessage();
+        $callback($recorder);
 
-        foreach ($message->getSymfonyMessage()->getTo() as $address) {
-            DigestCommandTest::$sentTo[] = $address->getAddress();
+        foreach ($recorder->to as $address) {
+            DigestCommandTest::$sentTo[] = $address;
         }
     }
 }
