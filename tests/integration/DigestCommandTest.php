@@ -125,8 +125,24 @@ class DigestCommandTest extends ConsoleTestCase
     /** @test */
     public function it_sends_one_copy_per_address(): void
     {
-        // Two admin accounts, one address. The join cannot produce this, but a
-        // case-sensitive collation can.
+        // Two admin accounts, one address. group_user's composite key means the
+        // join cannot produce this, but a case-sensitive collation can.
+        //
+        // Whether it CAN happen is a property of the database, not of us:
+        // MySQL and MariaDB fold case in users_email_unique and reject the
+        // second account outright, while PostgreSQL and SQLite accept it. So
+        // probe the collation rather than assume one, and skip where the
+        // scenario is impossible instead of asserting something untestable.
+        // (Probing beats catching: Laravel 8 has no
+        // UniqueConstraintViolationException, and this file serves both lines.)
+        $foldsCase = $this->database()->table('users')
+            ->where('email', 'FIRST@example.com')
+            ->exists();
+
+        if ($foldsCase) {
+            $this->markTestSkipped('this database folds case in the email index, so one address cannot reach two accounts');
+        }
+
         $this->database()->table('users')->where('id', 3)->update(['email' => 'FIRST@example.com']);
 
         $this->runCommand(['command' => 'birdseye:digest']);
