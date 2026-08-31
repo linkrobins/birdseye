@@ -57,6 +57,11 @@ class DigestCommand extends AbstractCommand
 
     protected function fire(): int
     {
+        // Per run, not per instance: Symfony keeps command objects for the life
+        // of the process, so a second fire() would inherit the last one's
+        // answer. Leaving it stale is the exact bug this class exists to stop.
+        $this->sentThisRun = false;
+
         if (!(bool) $this->settings->get('linkrobins-birdseye.weekly_digest', true)) {
             $this->info('Weekly digest is disabled in settings.');
 
@@ -201,9 +206,11 @@ class DigestCommand extends AbstractCommand
      * has loaded the marker for itself.
      *
      * Locking lives on the STORE, not on the cache repository — the Repository
-     * contract has never declared lock(). A store that cannot lock (array, and
-     * some third-party drivers) runs unlocked exactly as before, because
-     * Birdseye never lets infrastructure break a best-effort feature.
+     * contract has never declared lock(). Flarum's own file store locks, and so
+     * does the array store, so this degrades only on a third-party driver that
+     * skips LockProvider — and it degrades to the old behaviour rather than
+     * failing, because Birdseye never lets infrastructure break a best-effort
+     * feature.
      *
      * @param callable(): int $callback
      */
