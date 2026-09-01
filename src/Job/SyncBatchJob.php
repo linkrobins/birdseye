@@ -2,27 +2,34 @@
 
 namespace LinkRobins\Birdseye\Job;
 
-use Flarum\Foundation\Config;
 use Flarum\Queue\AbstractJob;
 use Flarum\Settings\SettingsRepositoryInterface;
-use GuzzleHttp\Client;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use LinkRobins\Birdseye\Buffer\BufferedEvent;
 use LinkRobins\Birdseye\Rollup\Rollup;
+use LinkRobins\Birdseye\Stats\LocalProcessor;
+use MaxMind\Db\Reader;
 
 /**
- * Consumes the buffer one COMPLETE UTC day at a time. A day is pushed as a
- * single request so the stateless processor sees every event it needs for
- * uniques and sessionization — no cross-push memory required on either
- * side. Keyed: push to the processor, store the returned rollups. Unkeyed:
- * compute basic local counts (the free funnel) and never phone out.
+ * Consumes the buffer one COMPLETE UTC day at a time, entirely on this
+ * server. A day is processed whole so uniques and sessionization see every
+ * event they need — no cross-run memory required. Nothing is ever sent
+ * anywhere: the processing that used to happen on a hosted endpoint runs
+ * in {@see LocalProcessor} now.
  *
  * Idempotent by construction: rollup writes are upserts on
  * (date, metric, key), and events are only deleted after rollups land, so
- * a retry re-pushes the same day and overwrites identical values.
+ * a retry re-processes the same day and overwrites identical values.
  */
 class SyncBatchJob extends AbstractJob implements ShouldBeUnique
 {
+    /**
+     * Note on ShouldBeUnique: in Flarum's stack it is decorative — the lock
+     * acquisition lives in illuminate/foundation, which Flarum doesn't ship,
+     * so no dispatch path ever takes it. The real overlap guard is the
+     * scheduler's withoutOverlapping()/onOneServer() on the sync command.
+     * The interface stays for queue setups that do honor it.
+     */
     public int $tries = 3;
 
     public int $timeout = 120;
@@ -33,11 +40,9 @@ class SyncBatchJob extends AbstractJob implements ShouldBeUnique
     /** Hard cap per day; a bigger day is truncated and noted in the log. */
     protected const MAX_EVENTS = 100000;
 
-    public function handle(SettingsRepositoryInterface $settings, Config $config): void
+    public function handle(SettingsRepositoryInterface $settings): void
     {
-        $key = trim((string) $settings->get('linkrobins-birdseye.license_key'));
-        $endpoint = trim((string) $settings->get('linkrobins-birdseye.endpoint'));
-        $keyed = $key !== '' && $endpoint !== '';
+        $processor = new LocalProcessor($this->geoReader($settings));
 
         for ($i = 0; $i < self::MAX_DAYS; $i++) {
             $day = $this->oldestCompleteDay();
@@ -62,11 +67,12 @@ class SyncBatchJob extends AbstractJob implements ShouldBeUnique
                 ->toBase()
                 ->cursor();
 
-            if ($keyed) {
-                $events = [];
-
+            // A generator, not an array: a 100k-event day must never be
+            // materialized on shared-hosting memory limits. The processor
+            // aggregates in one pass and retains only its running tallies.
+            $events = (function () use ($rows) {
                 foreach ($rows as $row) {
-                    $events[] = [
+                    yield [
                         'at' => substr((string) $row->occurred_at, 11, 8),
                         'type' => $row->type,
                         'path' => $row->path,
@@ -79,11 +85,9 @@ class SyncBatchJob extends AbstractJob implements ShouldBeUnique
                         'q' => $row->search_query,
                     ];
                 }
+            })();
 
-                $rollups = $this->pushForProcessing($endpoint, $key, (string) $config->url(), $day, $events);
-            } else {
-                $rollups = $this->localRollups($day, $rows);
-            }
+            $rollups = $processor->process($day, $events);
 
             foreach ($rollups as $r) {
                 Rollup::put($r['date'], $r['metric'], $r['key'] ?? '', (int) $r['value']);
@@ -114,70 +118,28 @@ class SyncBatchJob extends AbstractJob implements ShouldBeUnique
     }
 
     /**
-     * @param array<int, array<string, mixed>> $events
-     * @return array<int, array{date: string, metric: string, key?: string, value: int}>
+     * A MaxMind country database reader, when the admin has pointed the
+     * geoip_db_path setting at one (GeoLite2-Country works; the admin
+     * downloads it from MaxMind under their own account, since the file
+     * cannot be redistributed). Without one, country still comes from the
+     * trusted-proxy header at capture time — this is only the fallback for
+     * forums not behind such a proxy.
      */
-    protected function pushForProcessing(string $endpoint, string $key, string $forumUrl, string $day, array $events): array
+    protected function geoReader(SettingsRepositoryInterface $settings): ?Reader
     {
-        $client = new Client(['timeout' => 60, 'connect_timeout' => 10]);
+        $path = trim((string) $settings->get('linkrobins-birdseye.geoip_db_path'));
 
-        $response = $client->post($endpoint, [
-            'headers' => [
-                'Authorization' => "Bearer {$key}",
-                'Content-Type' => 'application/json',
-            ],
-            'body' => json_encode([
-                'forum_url' => $forumUrl,
-                'date' => $day,
-                'truncated' => count($events) >= self::MAX_EVENTS,
-                'events' => $events,
-            ], JSON_UNESCAPED_SLASHES),
-        ]);
-
-        $body = json_decode((string) $response->getBody(), true);
-
-        if (!is_array($body) || !is_array($body['rollups'] ?? null)) {
-            throw new \RuntimeException('Birdseye processor returned an unexpected response.');
+        if ($path === '' || !is_file($path)) {
+            return null;
         }
 
-        return $body['rollups'];
-    }
-
-    /**
-     * Unkeyed fallback: honest basic counts, computed locally in one
-     * streaming pass. Everything richer (sessions, bounce, countries, top
-     * lists) is what the license key buys.
-     *
-     * @param iterable<int, object> $rows
-     * @return array<int, array{date: string, metric: string, key?: string, value: int}>
-     */
-    protected function localRollups(string $day, iterable $rows): array
-    {
-        $pageviews = $posts = $registrations = 0;
-        $visitors = [];
-
-        foreach ($rows as $row) {
-            $type = (string) $row->type;
-
-            if ($type === BufferedEvent::TYPE_VIEW) {
-                $pageviews++;
-
-                if (($v = (string) ($row->visitor ?? '')) !== '') {
-                    $visitors[$v] = true;
-                }
-            } elseif ($type === BufferedEvent::TYPE_POST) {
-                $posts++;
-            } elseif ($type === BufferedEvent::TYPE_REGISTER) {
-                $registrations++;
-            }
+        try {
+            return new Reader($path);
+        } catch (\Throwable) {
+            // A malformed database must not stop the day's stats; it just
+            // means "no country fallback".
+            return null;
         }
-
-        return [
-            ['date' => $day, 'metric' => 'pageviews', 'value' => $pageviews],
-            ['date' => $day, 'metric' => 'visitors', 'value' => count($visitors)],
-            ['date' => $day, 'metric' => 'posts', 'value' => $posts],
-            ['date' => $day, 'metric' => 'registrations', 'value' => $registrations],
-        ];
     }
 
     public function failed(?\Throwable $exception): void

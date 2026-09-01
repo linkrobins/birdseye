@@ -15,10 +15,9 @@ use LinkRobins\Birdseye\Rollup\Rollup;
  * renders one well-known structure. Everything here reads the forum's OWN
  * database; nothing leaves the server.
  *
- * The forum-health blocks (today, new members, unanswered, tags) are computed
- * entirely locally too — they need no license key and no processor round
- * trip, which is the point: the free tier should already feel like a forum
- * tool, not a generic pageview counter.
+ * The forum-health blocks (today, new members, unanswered, tags) read the
+ * live tables rather than rollups, which is the point: Birdseye should feel
+ * like a forum tool, not a generic pageview counter.
  */
 class StatsBuilder
 {
@@ -55,13 +54,92 @@ class StatsBuilder
      */
     public function build(User $actor): array
     {
+        [$months, $years] = $this->calendar();
+
         return [
             'ranges' => [
                 '7d' => $this->range(7, $actor),
                 '30d' => $this->range(30, $actor),
             ],
+            'months' => $months,
+            'years' => $years,
             'today' => $this->today(),
             'unanswered' => $this->unanswered($actor),
+        ];
+    }
+
+    /** Months shown in the by-month table; years are uncapped. */
+    protected const MONTHS_CAP = 24;
+
+    /**
+     * Calendar summaries: the full rollup history folded into per-month and
+     * per-year rows, so the numbers stop reading as one endlessly growing
+     * total (requested in d/39605/60). Grouping happens here rather than in
+     * SQL so the same code runs on MySQL, MariaDB, PostgreSQL and SQLite.
+     *
+     * "Visits" is the sum of each day's unique visitors, same as the range
+     * tiles: someone returning across several days counts once per day. True
+     * monthly uniques would need visitor hashes kept for a month, and the
+     * hashes are deliberately discarded with the daily buffer.
+     *
+     * The bucket containing today is flagged partial, so the UI can say the
+     * month is still accumulating rather than showing a small number that
+     * looks like a collapse.
+     *
+     * @return array{0: array<int, array<string, mixed>>, 1: array<int, array<string, mixed>>}
+     */
+    protected function calendar(): array
+    {
+        $rows = Rollup::query()
+            ->where('key', '')
+            ->whereIn('metric', self::SCALARS)
+            ->where('date', '<=', gmdate('Y-m-d', strtotime('-1 day')))
+            ->toBase()
+            ->get(['date', 'metric', 'value']);
+
+        $byMonth = [];
+        $byYear = [];
+
+        foreach ($rows as $row) {
+            $date = substr((string) $row->date, 0, 10);
+            $month = substr($date, 0, 7);
+            $year = substr($date, 0, 4);
+
+            $byMonth[$month][$row->metric] = ($byMonth[$month][$row->metric] ?? 0) + (int) $row->value;
+            $byYear[$year][$row->metric] = ($byYear[$year][$row->metric] ?? 0) + (int) $row->value;
+        }
+
+        krsort($byMonth);
+        krsort($byYear);
+
+        $fold = function (array $groups, string $currentBucket, string $key): array {
+            $out = [];
+
+            foreach ($groups as $bucket => $t) {
+                $t += array_fill_keys(self::SCALARS, 0);
+
+                $out[] = [
+                    $key => (string) $bucket,
+                    'visits' => $t['visitors'],
+                    'pageviews' => $t['pageviews'],
+                    'bounce_rate' => $t['sessions'] > 0
+                        ? round($t['bounce_sessions'] / $t['sessions'], 4)
+                        : null,
+                    'avg_session_sec' => $t['sessions'] > 0
+                        ? (int) round($t['session_seconds'] / $t['sessions'])
+                        : null,
+                    'posts' => $t['posts'],
+                    'registrations' => $t['registrations'],
+                    'partial' => $bucket === $currentBucket,
+                ];
+            }
+
+            return $out;
+        };
+
+        return [
+            array_slice($fold($byMonth, gmdate('Y-m'), 'month'), 0, self::MONTHS_CAP),
+            $fold($byYear, gmdate('Y'), 'year'),
         ];
     }
 

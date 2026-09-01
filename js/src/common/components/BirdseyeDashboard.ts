@@ -104,8 +104,22 @@ interface TodayBlock {
   registrations: number;
 }
 
+interface PeriodRow {
+  month?: string;
+  year?: string;
+  visits: number;
+  pageviews: number;
+  bounce_rate: number | null;
+  avg_session_sec: number | null;
+  posts: number;
+  registrations: number;
+  partial: boolean;
+}
+
 interface StatsPayload {
   ranges: Record<string, RangeBlock>;
+  months: PeriodRow[];
+  years: PeriodRow[];
   today: TodayBlock;
   unanswered: ListRow[];
 }
@@ -124,6 +138,11 @@ export interface BirdseyeDashboardAttrs {
 export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs> {
   loading = true;
   ranges: Record<string, RangeBlock> | null = null;
+  months: PeriodRow[] = [];
+  years: PeriodRow[] = [];
+  /** Which calendar the history card shows; years only exist to click once
+   *  the rollups span more than one. */
+  historyUnit: 'month' | 'year' = 'month';
   today: TodayBlock | null = null;
   unanswered: ListRow[] = [];
   /** Both header choices are sticky — picked once, then restored on every
@@ -165,6 +184,8 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
       .request<StatsPayload>({ method: 'GET', url: `${api}/birdseye/stats` })
       .then((data) => {
         this.ranges = data.ranges;
+        this.months = data.months || [];
+        this.years = data.years || [];
         this.today = data.today;
         this.unanswered = data.unanswered || [];
 
@@ -277,6 +298,8 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
         this.card('new_members', trans('new_members'), block.new_members, shortDate, 'members'),
       ]),
 
+      this.historyCard(),
+
       m(
         '.BirdseyeDashboard-card.BirdseyeDashboard-mapCard',
         // A class rather than a second selector: changing the selector would
@@ -294,6 +317,76 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
           }),
         ]
       ),
+    ]);
+  }
+
+  /**
+   * The by-month / by-year table: the whole rollup history folded into
+   * calendar rows, so the numbers stop reading as one endlessly growing
+   * total. The bucket still accumulating is marked so a low number reads
+   * as "in progress", not as a collapse.
+   */
+  historyCard(): Mithril.Children {
+    const rows = this.historyUnit === 'year' ? this.years : this.months;
+
+    if (!rows.length) return null;
+
+    const label = (r: PeriodRow) => (this.historyUnit === 'year' ? String(r.year) : monthName(String(r.month)));
+
+    return m('.BirdseyeDashboard-card.BirdseyeDashboard-historyCard', [
+      m('.BirdseyeDashboard-cardTitle', [
+        m('span.BirdseyeDashboard-cardTitleText', trans('history')),
+        this.years.length > 1
+          ? m(
+              '.BirdseyeDashboard-cardTitleRight',
+              (['month', 'year'] as const).map((u) =>
+                m(
+                  'button.Button.Button--link',
+                  {
+                    type: 'button',
+                    className: this.historyUnit === u ? 'is-active' : '',
+                    onclick: () => {
+                      this.historyUnit = u;
+                    },
+                  },
+                  trans(u === 'month' ? 'by_month' : 'by_year')
+                )
+              )
+            )
+          : null,
+      ]),
+      m('.BirdseyeDashboard-historyScroll', [
+        m('table.BirdseyeDashboard-historyTable', [
+          m('thead', [
+            m('tr', [
+              m('th', ''),
+              m('th', trans('visitors')),
+              m('th', trans('pageviews')),
+              m('th', trans('bounce_rate')),
+              m('th', trans('avg_visit')),
+              m('th', trans('posts')),
+              m('th', trans('signups')),
+            ]),
+          ]),
+          m(
+            'tbody',
+            rows.map((r) =>
+              m('tr', { key: label(r) }, [
+                m('td.BirdseyeDashboard-historyLabel', [
+                  label(r),
+                  r.partial ? m('span.BirdseyeDashboard-historyPartial', transText('so_far')) : null,
+                ]),
+                m('td', String(r.visits)),
+                m('td', String(r.pageviews)),
+                m('td', r.bounce_rate === null ? '\u2014' : `${Math.round(r.bounce_rate * 100)}%`),
+                m('td', r.avg_session_sec === null ? '\u2014' : fmtDur(r.avg_session_sec)),
+                m('td', String(r.posts)),
+                m('td', String(r.registrations)),
+              ])
+            )
+          ),
+        ]),
+      ]),
     ]);
   }
 
@@ -1012,6 +1105,19 @@ function shortDate(iso: string): string {
     return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   } catch {
     return iso;
+  }
+}
+
+/** "2026-08" -> "Aug 2026" in the viewer's locale, falling back to the raw key. */
+function monthName(ym: string): string {
+  const [y, mo] = ym.split('-').map(Number);
+
+  if (!y || !mo) return ym;
+
+  try {
+    return new Date(Date.UTC(y, mo - 1, 1)).toLocaleDateString(undefined, { month: 'short', year: 'numeric', timeZone: 'UTC' });
+  } catch {
+    return ym;
   }
 }
 

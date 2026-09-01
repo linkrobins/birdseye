@@ -5,6 +5,10 @@ linkrobins-birdseye:
     dashboard:
       title: Analytics
       range_7d: 7 days
+      history: History
+      by_month: Months
+      by_year: Years
+      so_far: so far
       range_30d: 30 days
       visitors: Visitors
       pageviews: Pageviews
@@ -65,18 +69,18 @@ linkrobins-birdseye:
       collect_help: >-
         Pause collection without disabling the extension. Existing stats keep
         rendering.
-      license_key_label: License key
-      license_key_help: >-
-        From your Birdseye subscription at linkrobins.com. Without a key the
-        extension records basic daily counts only, entirely locally. Saving
-        a key checks in with Birdseye right away, so your dashboard shows
-        the forum as connected within seconds.
       geo_ip_prefix_label: Country lookup via anonymized IP prefix
       geo_ip_prefix_help: >-
         When no proxy country header is present, keep a truncated IP prefix
-        (never the full address) in the 72-hour buffer so the processor can
-        resolve visitor countries. Turn off to skip country stats on
+        (never the full address) in the 72-hour buffer so visitor countries
+        can be resolved locally. Turn off to skip country stats on
         non-proxied traffic.
+      geoip_db_path_label: Country database file (optional)
+      geoip_db_path_help: >-
+        Full path on this server to a MaxMind country database, such as the
+        free GeoLite2-Country.mmdb (download it from maxmind.com under your
+        own account). Used only when no trusted proxy header supplies the
+        country; every lookup happens on this server.
       country_header_label: Trusted country header
       country_header_help: >-
         The proxy header carrying each visitor's two-letter country code —

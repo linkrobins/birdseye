@@ -3,7 +3,6 @@
 use Flarum\Api\Resource\ForumResource;
 use Flarum\Extend;
 use Flarum\Post\Event\Posted;
-use Flarum\Settings\Event\Saved;
 use Flarum\User\Event\Registered;
 use LinkRobins\Birdseye\Api\ForumFields;
 use LinkRobins\Birdseye\Api\StatsHandler;
@@ -14,7 +13,6 @@ use LinkRobins\Birdseye\Console\DigestCommand;
 use LinkRobins\Birdseye\Console\SyncCommand;
 use LinkRobins\Birdseye\Listener\RecordPosted;
 use LinkRobins\Birdseye\Listener\RecordRegistered;
-use LinkRobins\Birdseye\Listener\SendHelloOnKeyChange;
 
 // The forum field telling the frontend whether to offer the Analytics entry.
 // It fails closed inside ForumFields: this ships on every forum response, so
@@ -61,11 +59,7 @@ return [
 
     (new Extend\Event())
         ->listen(Posted::class, RecordPosted::class)
-        ->listen(Registered::class, RecordRegistered::class)
-        // Saving a license key fires an immediate first-contact check-in so
-        // the key binds (and shows as connected on the customer dashboard)
-        // within seconds instead of after the first complete-day sync.
-        ->listen(Saved::class, SendHelloOnKeyChange::class),
+        ->listen(Registered::class, RecordRegistered::class),
 
     (new Extend\Console())
         ->command(SyncCommand::class)
@@ -85,13 +79,11 @@ return [
         // Kill-switch: collection can be paused without disabling the
         // extension (existing rollups keep rendering).
         ->default('linkrobins-birdseye.collect', true)
-        // Where batches are pushed for processing. Deliberately NOT exposed
-        // in the admin UI — customers never change it; it stays a hidden
-        // setting so dev/staging can override it manually. Only meaningful
-        // with a license key; without one the sync command rolls up basic
-        // counts locally and never phones out.
-        ->default('linkrobins-birdseye.endpoint', 'https://linkrobins.com/api/birdseye/process')
-        ->default('linkrobins-birdseye.license_key', '')
+        // Optional path to a MaxMind country database (e.g. GeoLite2-Country
+        // .mmdb) for resolving visitor country when no trusted proxy supplies
+        // a country header. Downloaded by the admin under their own MaxMind
+        // account; everything is looked up locally.
+        ->default('linkrobins-birdseye.geoip_db_path', '')
         // Monday email to admins summarizing last week's rollups. Local
         // only; skips silently when the week has no data.
         ->default('linkrobins-birdseye.weekly_digest', true)

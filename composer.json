@@ -1,11 +1,19 @@
 {
     "name": "linkrobins/birdseye",
-    "description": "Forum analytics for Flarum \u2014 server-side, zero JavaScript, no cookies. Your stats live in your own database.",
+    "description": "Forum analytics for Flarum — server-side, zero JavaScript, no cookies. Your stats live in your own database.",
     "type": "flarum-extension",
+    "keywords": [
+        "flarum",
+        "analytics",
+        "statistics",
+        "privacy",
+        "dashboard"
+    ],
+    "homepage": "https://linkrobins.com/birdseye",
     "license": "MIT",
     "authors": [
         {
-            "name": "Karl Bullock",
+            "name": "Link Robins",
             "email": "karl@linkrobins.com"
         }
     ],
@@ -14,9 +22,9 @@
         "source": "https://github.com/linkrobins/birdseye"
     },
     "require": {
-        "php": ">=8.0",
+        "php": "^8.3",
         "flarum/core": "^2.0",
-        "guzzlehttp/guzzle": "^7.0"
+        "maxmind-db/reader": "^1.11"
     },
     "require-dev": {
         "flarum/testing": "^2.0",

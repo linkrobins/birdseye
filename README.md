@@ -15,18 +15,16 @@ Events sit in a short-lived local buffer (72 hours max). Once a day, the
 buffer is rolled up into small per-day aggregate rows in your database —
 that's the permanent history, a few kilobytes per month.
 
-- **Without a license key**, rollups are computed locally and include basic
-  daily counts: pageviews, visitors, posts, registrations. Nothing ever
-  leaves your server.
-- **With a [Birdseye subscription](https://linkrobins.com/birdseye)**, the
-  daily batch is sent to our processor, which computes the full picture —
-  bounce rate, session length, top pages and discussions, referrer sources,
-  devices, countries (world map included) — and returns the results to be
-  stored **in your database**. We keep nothing. Cancel anytime; every stat
-  you've collected stays with you. Saving your key checks in with the
-  processor right away, so your linkrobins.com dashboard shows the forum as
-  connected within seconds; the first full-picture stats follow once the
-  first complete day rolls over.
+Everything is computed **on your own server**: pageviews, visitors, bounce
+rate, session length, top pages and discussions, referrer sources, devices,
+countries (world map included). There is no account, no license key, and no
+external service — nothing ever leaves your forum, and the full picture is
+free.
+
+Visitor countries come from your proxy's country header when you have one
+(Cloudflare's `CF-IPCountry` by default). Without a proxy, point the optional
+country-database setting at a MaxMind GeoLite2-Country file and lookups
+happen locally too.
 
 ## Beyond the numbers
 
@@ -82,6 +80,5 @@ without checking the 1.8 leg of CI.
 
 ## Links
 
-- [Birdseye subscriptions](https://linkrobins.com/birdseye)
-- [Support forum](https://linkrobins.com/forum)
+- [Support](https://github.com/linkrobins/birdseye/issues)
 - [Source on GitHub](https://github.com/linkrobins/birdseye)
