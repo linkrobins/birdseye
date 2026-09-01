@@ -8,6 +8,8 @@ use Flarum\Group\Group;
 use Flarum\Locale\Translator;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\User\User;
+use Illuminate\Contracts\Cache\LockProvider;
+use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Contracts\Mail\Mailer;
 use LinkRobins\Birdseye\Rollup\Rollup;
 use Symfony\Component\Console\Input\InputOption;
@@ -15,20 +17,31 @@ use Symfony\Component\Console\Input\InputOption;
 /**
  * Weekly summary of the last full week (Mon–Sun UTC), mailed to
  * confirmed-email admins as multipart HTML + plain text — the HTML part rides
- * core's branded email layout so it matches the forum's other mail. Scheduled Monday mornings (see extend.php); a
- * settings row remembers the last week sent so a re-run or a second server
- * firing the scheduler can't double-send. Entirely local — reads rollups,
- * never the network. Best-effort like all of Birdseye: a broken mail setup
- * logs a warning per recipient and never throws.
+ * core's branded email layout so it matches the forum's other mail. Scheduled
+ * Monday mornings (see extend.php).
+ *
+ * Sending exactly once needs two guards, because they cover different things:
+ * a settings row remembers the last week sent, which stops a LATER re-run, and
+ * a cache lock is taken before that row is read, which stops a CONCURRENT one.
+ * Without the lock the marker is a check-then-act race — two schedulers firing
+ * in the same minute both see the old week, both send, and the admin gets two
+ * identical emails moments apart.
+ *
+ * Entirely local — reads rollups, never the network. Best-effort like all of
+ * Birdseye: a broken mail setup logs a warning per recipient and never throws.
  */
 class DigestCommand extends AbstractCommand
 {
     protected const SCALARS = ['visitors', 'pageviews', 'posts', 'registrations'];
 
+    /** Whether this run actually put mail on the wire; see whileHoldingWeek(). */
+    protected bool $sentThisRun = false;
+
     public function __construct(
         protected SettingsRepositoryInterface $settings,
         protected Mailer $mailer,
-        protected Translator $translator
+        protected Translator $translator,
+        protected Cache $cache
     ) {
         parent::__construct();
     }
@@ -38,11 +51,17 @@ class DigestCommand extends AbstractCommand
         $this
             ->setName('birdseye:digest')
             ->setDescription('Email admins a summary of last week\'s forum activity')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Send even if this week\'s digest was already sent');
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Send even if this week\'s digest was already sent')
+            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'List who would be emailed and send nothing');
     }
 
     protected function fire(): int
     {
+        // Per run, not per instance: Symfony keeps command objects for the life
+        // of the process, so a second fire() would inherit the last one's
+        // answer. Leaving it stale is the exact bug this class exists to stop.
+        $this->sentThisRun = false;
+
         if (!(bool) $this->settings->get('linkrobins-birdseye.weekly_digest', true)) {
             $this->info('Weekly digest is disabled in settings.');
 
@@ -56,66 +75,172 @@ class DigestCommand extends AbstractCommand
         $priorEnd = $monday->modify('-8 days');
 
         $weekKey = $weekStart->format('Y-m-d');
+        $force = (bool) $this->input->getOption('force');
 
-        if (!$this->input->getOption('force')
-            && $this->settings->get('linkrobins-birdseye.digest_last_week') === $weekKey) {
-            $this->info("Digest for week {$weekKey} already sent.");
+        // Answers "who does this actually mail?" without sending anything —
+        // the first thing worth checking when someone reports a duplicate,
+        // since two admin accounts reaching one inbox looks identical to a
+        // double send from the recipient's side.
+        if ($this->input->getOption('dry-run')) {
+            $recipients = $this->recipients();
+
+            $this->info("Week {$weekKey} digest would go to ".count($recipients).' recipient(s):');
+
+            foreach ($recipients as $recipient) {
+                $this->info("  {$recipient->username} <{$recipient->email}>");
+            }
+
+            if (!$force && $this->settings->get('linkrobins-birdseye.digest_last_week') === $weekKey) {
+                $this->info('(Already marked sent for this week, so a real run would do nothing without --force.)');
+            }
 
             return 0;
         }
 
-        $week = $this->weekTotals($weekStart, $weekEnd);
-        $prior = $this->weekTotals($priorStart, $priorEnd);
+        $send = function () use ($weekKey, $force, $weekStart, $weekEnd, $priorStart, $priorEnd) {
+            // The durable guard, and the only one that survives a restart or
+            // a cache wipe. It cannot be trusted to catch a same-minute double
+            // run on its own — settings are read once per process — which is
+            // what the lock around this closure is for.
+            if (!$force && $this->settings->get('linkrobins-birdseye.digest_last_week') === $weekKey) {
+                $this->info("Digest for week {$weekKey} already sent.");
 
-        if ($week['rows'] === 0) {
-            // Fresh install or collection off all week — no email, and no
-            // sent-marker so a late backfill could still go out on --force.
-            $this->info('No rollup data for last week; nothing to send.');
+                return 0;
+            }
+
+            $week = $this->weekTotals($weekStart, $weekEnd);
+            $prior = $this->weekTotals($priorStart, $priorEnd);
+
+            if ($week['rows'] === 0) {
+                // Fresh install or collection off all week — no email, and no
+                // sent-marker so a late backfill could still go out on --force.
+                $this->info('No rollup data for last week; nothing to send.');
+
+                return 0;
+            }
+
+            $body = $this->body($weekStart, $weekEnd, $week, $prior);
+            $viewData = $this->viewData($weekStart, $weekEnd, $week, $prior, $body);
+            $subject = $this->translator->trans('linkrobins-birdseye.email.digest.subject', [
+                '{forum}' => (string) $this->settings->get('forum_title'),
+                '{visitors}' => number_format($week['visitors']),
+            ]);
+
+            $sent = 0;
+
+            foreach ($this->recipients() as $recipient) {
+                try {
+                    $this->mailer->send(
+                        [
+                            'html' => 'linkrobins-birdseye::email.digest-html',
+                            'text' => 'linkrobins-birdseye::email.digest-plain',
+                        ],
+                        $viewData,
+                        function ($message) use ($recipient, $subject) {
+                            $message->to($recipient->email)->subject($subject);
+                        }
+                    );
+                    $sent++;
+                } catch (\Throwable $e) {
+                    $this->error("Digest to {$recipient->email} failed: {$e->getMessage()}");
+                }
+            }
+
+            if ($sent > 0) {
+                $this->sentThisRun = true;
+                $this->settings->set('linkrobins-birdseye.digest_last_week', $weekKey);
+            }
+
+            $this->info("Digest for week {$weekKey} sent to {$sent} admin(s).");
 
             return 0;
-        }
+        };
 
-        $body = $this->body($weekStart, $weekEnd, $week, $prior);
-        $viewData = $this->viewData($weekStart, $weekEnd, $week, $prior, $body);
-        $subject = $this->translator->trans('linkrobins-birdseye.email.digest.subject', [
-            '{forum}' => (string) $this->settings->get('forum_title'),
-            '{visitors}' => number_format($week['visitors']),
-        ]);
+        // --force is someone deliberately re-sending, so it must not be turned
+        // away by a lock that is still holding this week open from earlier.
+        return $force ? $send() : $this->whileHoldingWeek($weekKey, $send);
+    }
 
-        $recipients = User::query()
+    /**
+     * Confirmed-email administrators, one entry per address.
+     *
+     * group_user is keyed on (user_id, group_id), so the join cannot repeat a
+     * user; the dedupe is for the case the database will happily allow, which
+     * is two admin accounts holding the same address in different cases on a
+     * case-sensitive collation.
+     *
+     * @return list<\Flarum\User\User>
+     */
+    protected function recipients(): array
+    {
+        $rows = User::query()
             ->join('group_user', 'group_user.user_id', '=', 'users.id')
             ->where('group_user.group_id', Group::ADMINISTRATOR_ID)
             ->where('users.is_email_confirmed', true)
             ->whereNotNull('users.email')
             ->get(['users.email', 'users.username']);
 
-        $sent = 0;
+        $byAddress = [];
 
-        foreach ($recipients as $recipient) {
-            try {
-                $this->mailer->send(
-                    [
-                        'html' => 'linkrobins-birdseye::email.digest-html',
-                        'text' => 'linkrobins-birdseye::email.digest-plain',
-                    ],
-                    $viewData,
-                    function ($message) use ($recipient, $subject) {
-                        $message->to($recipient->email)->subject($subject);
-                    }
-                );
-                $sent++;
-            } catch (\Throwable $e) {
-                $this->error("Digest to {$recipient->email} failed: {$e->getMessage()}");
+        foreach ($rows as $row) {
+            $byAddress[mb_strtolower(trim((string) $row->email))] ??= $row;
+        }
+
+        return array_values($byAddress);
+    }
+
+    /**
+     * Run $callback holding an exclusive lock on this week.
+     *
+     * extend.php already asks for onOneServer(), but that is advisory: it
+     * needs a cache shared by every node, and a per-node or misconfigured one
+     * turns it into a silent no-op. Flarum's default file store is a real
+     * lock and is enough for the single-server installs this affects.
+     *
+     * ⚠️ The lock is NOT released after a send, and that is the point. Flarum
+     * caches settings in memory for the life of the process, so a second run
+     * that booted before the marker was written keeps reading the old value no
+     * matter when it looks. Releasing would let exactly that straggler through
+     * the guard and send the duplicate this is here to prevent. Holding the
+     * lock until it expires blocks it instead, and by then any newer process
+     * has loaded the marker for itself.
+     *
+     * Locking lives on the STORE, not on the cache repository — the Repository
+     * contract has never declared lock(). Flarum's own file store locks, and so
+     * does the array store, so this degrades only on a third-party driver that
+     * skips LockProvider — and it degrades to the old behaviour rather than
+     * failing, because Birdseye never lets infrastructure break a best-effort
+     * feature.
+     *
+     * @param callable(): int $callback
+     */
+    protected function whileHoldingWeek(string $weekKey, callable $callback): int
+    {
+        $store = $this->cache->getStore();
+
+        if (!$store instanceof LockProvider) {
+            return $callback();
+        }
+
+        // Long enough to cover a straggling scheduler and a slow SMTP server;
+        // short enough that a killed process frees the week again well before
+        // there is anything new to send.
+        $lock = $store->lock("linkrobins-birdseye.digest.{$weekKey}", 600);
+
+        if (!$lock->get()) {
+            $this->info("Week {$weekKey} is already being sent, or was just sent, by another process.");
+
+            return 0;
+        }
+
+        try {
+            return $callback();
+        } finally {
+            // Only hand the week back if nothing went out; see above.
+            if (!$this->sentThisRun) {
+                $lock->release();
             }
         }
-
-        if ($sent > 0) {
-            $this->settings->set('linkrobins-birdseye.digest_last_week', $weekKey);
-        }
-
-        $this->info("Digest for week {$weekKey} sent to {$sent} admin(s).");
-
-        return 0;
     }
 
     /**

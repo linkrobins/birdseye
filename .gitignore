@@ -7,3 +7,6 @@ composer.lock
 tests/.phpunit.cache
 tests/integration/tmp
 tests/.phpunit.result.cache
+
+# PHPUnit writes this on every run; it is machine state, not source.
+.phpunit.result.cache
