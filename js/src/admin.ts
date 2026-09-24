@@ -50,7 +50,7 @@ app.initializers.add('linkrobins-birdseye', () => {
       {
         icon: 'fas fa-chart-line',
         label: app.translator.trans('linkrobins-birdseye.admin.permissions.view_stats_label'),
-        permission: 'linkrobins-birdseye.viewStats',
+        permission: 'lr-birdseye.viewStats',
       },
       'view'
     );

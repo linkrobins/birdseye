@@ -136,7 +136,7 @@ class StatsEndpointTest extends TestCase
     {
         $this->database()->table('group_permission')->insert([
             'group_id' => Group::MEMBER_ID,
-            'permission' => 'linkrobins-birdseye.viewStats',
+            'permission' => 'lr-birdseye.viewStats',
         ]);
 
         $response = $this->send($this->request('GET', '/api/birdseye/stats', ['authenticatedAs' => 2]));

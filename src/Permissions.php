@@ -11,5 +11,5 @@ final class Permissions
      * holds it by default — exposing traffic stats to members is deliberately
      * an operator opt-in, so nothing is seeded in a migration.
      */
-    public const VIEW_STATS = 'linkrobins-birdseye.viewStats';
+    public const VIEW_STATS = 'lr-birdseye.viewStats';
 }
