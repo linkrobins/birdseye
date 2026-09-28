@@ -7,8 +7,8 @@ use Flarum\Settings\SettingsRepositoryInterface;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use LinkRobins\Birdseye\Buffer\BufferedEvent;
 use LinkRobins\Birdseye\Rollup\Rollup;
+use LinkRobins\Birdseye\Stats\GeoDatabase;
 use LinkRobins\Birdseye\Stats\LocalProcessor;
-use MaxMind\Db\Reader;
 
 /**
  * Consumes the buffer one COMPLETE UTC day at a time, entirely on this
@@ -42,7 +42,7 @@ class SyncBatchJob extends AbstractJob implements ShouldBeUnique
 
     public function handle(SettingsRepositoryInterface $settings): void
     {
-        $processor = new LocalProcessor($this->geoReader($settings));
+        $processor = new LocalProcessor(GeoDatabase::reader($settings));
 
         for ($i = 0; $i < self::MAX_DAYS; $i++) {
             $day = $this->oldestCompleteDay();
@@ -115,31 +115,6 @@ class SyncBatchJob extends AbstractJob implements ShouldBeUnique
 
         // Today (UTC) is still accumulating — never consume it.
         return $day < gmdate('Y-m-d') ? $day : null;
-    }
-
-    /**
-     * A MaxMind country database reader, when the admin has pointed the
-     * geoip_db_path setting at one (GeoLite2-Country works; the admin
-     * downloads it from MaxMind under their own account, since the file
-     * cannot be redistributed). Without one, country still comes from the
-     * trusted-proxy header at capture time — this is only the fallback for
-     * forums not behind such a proxy.
-     */
-    protected function geoReader(SettingsRepositoryInterface $settings): ?Reader
-    {
-        $path = trim((string) $settings->get('linkrobins-birdseye.geoip_db_path'));
-
-        if ($path === '' || !is_file($path)) {
-            return null;
-        }
-
-        try {
-            return new Reader($path);
-        } catch (\Throwable) {
-            // A malformed database must not stop the day's stats; it just
-            // means "no country fallback".
-            return null;
-        }
     }
 
     public function failed(?\Throwable $exception): void

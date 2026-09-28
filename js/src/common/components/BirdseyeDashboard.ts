@@ -122,6 +122,9 @@ interface StatsPayload {
   years: PeriodRow[];
   today: TodayBlock;
   unanswered: ListRow[];
+  /** 'unconfigured' when no country can be resolved at all; null when fine
+   *  or when there is too little traffic to tell. */
+  country_lookup: string | null;
 }
 
 export interface BirdseyeDashboardAttrs {
@@ -145,6 +148,7 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
   historyUnit: 'month' | 'year' = 'month';
   today: TodayBlock | null = null;
   unanswered: ListRow[] = [];
+  countryLookup: string | null = null;
   /** Both header choices are sticky — picked once, then restored on every
    *  later visit rather than re-selected each time (d/39605/26). */
   range: RangeKey = readPref('range', RANGES, DEFAULT_RANGE);
@@ -188,6 +192,7 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
         this.years = data.years || [];
         this.today = data.today;
         this.unanswered = data.unanswered || [];
+        this.countryLookup = data.country_lookup ?? null;
 
         // A remembered range the payload doesn't carry would render an empty
         // dashboard forever, with no hint that the stored choice is the
@@ -294,7 +299,7 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
         this.card('sources', trans('sources'), block.sources, (l) => l || transText('direct'), 'visitors'),
         this.card('searches', trans('searches'), block.searches, (l) => l, 'searches'),
         this.card('devices', trans('devices'), block.devices, (l) => (l ? l.charAt(0).toUpperCase() + l.slice(1) : transText('unknown')), 'visitors'),
-        this.card('countries', trans('countries'), block.locations.slice(0, 8), countryName, 'visitors'),
+        this.card('countries', trans('countries'), block.locations.slice(0, 8), countryName, 'visitors', this.countryNote()),
         this.card('new_members', trans('new_members'), block.new_members, shortDate, 'members'),
       ]),
 
@@ -311,6 +316,7 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
             m('span.BirdseyeDashboard-cardTitleText', trans('world')),
             m('.BirdseyeDashboard-cardTitleRight', this.mapMarkup ? this.mapControls() : null),
           ]),
+          this.countryNotice(),
           m('.BirdseyeDashboard-map', {
             oncreate: (v: Mithril.VnodeDOM) => this.mountMap(v.dom as HTMLElement),
             onupdate: (v: Mithril.VnodeDOM) => this.mountMap(v.dom as HTMLElement),
@@ -441,6 +447,26 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
    *  names the per-card CSV export; `unit` is what the numbers count. */
   card(key: string, title: Mithril.Children, rows: ListRow[], labeller: (l: string) => Mithril.Children, unit: Unit, note?: Mithril.Children) {
     return this.viewMode === 'pie' ? this.donut(key, title, rows, labeller, unit, note) : this.list(key, title, rows, labeller, unit, note);
+  }
+
+  /**
+   * A short marker on the Countries card when no country can be resolved, so
+   * the empty list does not read as "nobody visited".
+   */
+  countryNote(): Mithril.Children {
+    return this.countryLookup === 'unconfigured' ? trans('country_lookup_note') : undefined;
+  }
+
+  /**
+   * The explanation, shown on the map card, where an operator looking at a
+   * blank world will actually be looking. Without this the only difference
+   * between "no country lookup configured" and "no visitors" is invisible,
+   * which is what sent two operators to the support thread.
+   */
+  countryNotice(): Mithril.Children {
+    if (this.countryLookup !== 'unconfigured') return null;
+
+    return m('.BirdseyeDashboard-mapNotice', trans('country_lookup_unconfigured'));
   }
 
   /** A card title with its optional note and, when there is something to

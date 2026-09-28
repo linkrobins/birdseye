@@ -377,6 +377,15 @@
     }
   }
 
+  // Shown in place of an explanation nobody had: a blank world map and a
+  // world with no visitors look identical, so say which one this is.
+  &-mapNotice {
+    color: var(--muted-color);
+    font-size: 12px;
+    line-height: 1.5;
+    margin: 0 0 8px;
+  }
+
   // The expanded map (d/39605/41): a fixed overlay, with real browser
   // fullscreen laid on top of it where that API exists. Both routes land on
   // these same rules, so the two look identical — the browser one just takes
