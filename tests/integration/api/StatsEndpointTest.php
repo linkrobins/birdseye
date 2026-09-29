@@ -56,11 +56,80 @@ class StatsEndpointTest extends TestCase
 
         $data = json_decode($response->getBody()->getContents(), true);
 
-        foreach (['ranges', 'today', 'unanswered'] as $key) {
+        foreach (['ranges', 'today', 'unanswered', 'country_lookup'] as $key) {
             $this->assertArrayHasKey($key, $data);
         }
 
         $this->assertArrayHasKey('new_members', $data['ranges']['7d']);
+    }
+
+    /**
+     * A forum behind no country-supplying proxy and with no local MaxMind
+     * database resolves no country for anyone, and the map then draws a world
+     * of zeroes that looks exactly like "nobody visited". Two operators
+     * reported that as a bug. The payload now says which one it is.
+     *
+     * @test
+     */
+    #[Test]
+    public function country_lookup_is_flagged_when_no_event_carries_a_country(): void
+    {
+        $this->seedEvents(null);
+
+        $this->assertSame('unconfigured', $this->countryLookup());
+    }
+
+    /**
+     * The opposite case: a proxy header is supplying countries, so there is
+     * nothing to warn about even though no MaxMind database is configured.
+     *
+     * @test
+     */
+    #[Test]
+    public function country_lookup_is_silent_when_events_carry_a_country(): void
+    {
+        $this->seedEvents('DE');
+
+        $this->assertNull($this->countryLookup());
+    }
+
+    /**
+     * A forum with no recent traffic gives nothing to judge by. Saying
+     * "unconfigured" there would cry wolf at every new or quiet forum, so the
+     * absence of events must stay silent rather than read as a fault.
+     *
+     * @test
+     */
+    #[Test]
+    public function country_lookup_is_silent_when_there_is_no_traffic_to_judge(): void
+    {
+        $this->assertNull($this->countryLookup());
+    }
+
+    /** The country_lookup verdict from a fresh dashboard payload. */
+    private function countryLookup(): ?string
+    {
+        $response = $this->send($this->request('GET', '/api/birdseye/stats', ['authenticatedAs' => 1]));
+
+        $this->assertEquals(200, $response->getStatusCode());
+
+        return json_decode($response->getBody()->getContents(), true)['country_lookup'];
+    }
+
+    /** Two buffered views, both carrying (or both missing) a country. */
+    private function seedEvents(?string $country): void
+    {
+        $day = gmdate('Y-m-d');
+
+        foreach (['v001', 'v002'] as $i => $visitor) {
+            $this->database()->table('birdseye_events')->insert([
+                'type' => 'view',
+                'path' => '/',
+                'visitor' => $visitor,
+                'country' => $country,
+                'occurred_at' => sprintf('%s 10:0%d:00', $day, $i),
+            ]);
+        }
     }
 
     /**

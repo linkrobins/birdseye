@@ -4,6 +4,7 @@ namespace LinkRobins\Birdseye\Stats;
 
 use Flarum\Discussion\Discussion;
 use Flarum\Extension\ExtensionManager;
+use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\Post\Post;
 use Flarum\User\User;
 use LinkRobins\Birdseye\Buffer\BufferedEvent;
@@ -45,12 +46,13 @@ class StatsBuilder
     protected const MEMBER_CAP = 20000;
 
     public function __construct(
-        protected ExtensionManager $extensions
+        protected ExtensionManager $extensions,
+        protected SettingsRepositoryInterface $settings
     ) {
     }
 
     /**
-     * @return array{ranges: array<string, mixed>, today: array<string, int>, unanswered: array<int, mixed>}
+     * @return array{ranges: array<string, mixed>, today: array<string, int>, unanswered: array<int, mixed>, country_lookup: ?string}
      */
     public function build(User $actor): array
     {
@@ -65,7 +67,43 @@ class StatsBuilder
             'years' => $years,
             'today' => $this->today(),
             'unanswered' => $this->unanswered($actor),
+            'country_lookup' => $this->countryLookup(),
         ];
+    }
+
+    /**
+     * Whether visitor countries can be resolved at all, for the dashboard to
+     * say so instead of drawing a world of zeroes.
+     *
+     * Country comes from a trusted proxy header at capture time, or failing
+     * that from a local MaxMind database. A forum with neither collects no
+     * country for anybody, and the map and Countries card then look exactly
+     * like "nobody visited". That is indistinguishable from a real outage to
+     * the operator: two of them reported the zeroed map as a bug after the
+     * hosted service, which used to resolve countries centrally, was retired
+     * in 2.3.0.
+     *
+     * Returns 'unconfigured' only when the buffer holds recent events and not
+     * one of them carries a country, and null otherwise, including when there
+     * is too little traffic to judge. A quiet forum must not be told its
+     * configuration is broken.
+     */
+    protected function countryLookup(): ?string
+    {
+        if (GeoDatabase::usable($this->settings)) {
+            return null;
+        }
+
+        $seen = BufferedEvent::query()
+            ->whereNotNull('country')
+            ->where('country', '!=', '')
+            ->exists();
+
+        if ($seen) {
+            return null;
+        }
+
+        return BufferedEvent::query()->exists() ? 'unconfigured' : null;
     }
 
     /** Months shown in the by-month table; years are uncapped. */
