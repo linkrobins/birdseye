@@ -63,7 +63,7 @@
     "extra": {
         "flarum-extension": {
             "migrations": "migrations",
-            "title": "Link Robins Birdseye",
+            "title": "LR Birdseye",
             "category": "feature",
             "icon": {
                 "name": "fas fa-chart-line",
