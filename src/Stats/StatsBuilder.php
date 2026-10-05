@@ -83,15 +83,26 @@ class StatsBuilder
      * hosted service, which used to resolve countries centrally, was retired
      * in 2.3.0.
      *
-     * Returns 'unconfigured' only when the buffer holds recent events and not
-     * one of them carries a country, and null otherwise, including when there
-     * is too little traffic to judge. A quiet forum must not be told its
-     * configuration is broken.
+     * Returns null when countries can be resolved, and otherwise a reason:
+     *
+     * - a GeoDatabase status (missing, compressed, ...) whenever a database
+     *   path is set but cannot be used. That is a definite misconfiguration,
+     *   so it is reported whatever the traffic.
+     * - 'prefix_off' when the database is fine but the anonymized IP prefix
+     *   it needs is not being kept, so it is never consulted.
+     * - 'unconfigured' when neither a database nor a header is in use.
+     *
+     * The last two are only said when the buffer holds recent events and not
+     * one of them carries a country. A quiet forum must not be told its
+     * configuration is broken, and a header supplying countries makes both
+     * beside the point.
      */
     protected function countryLookup(): ?string
     {
-        if (GeoDatabase::usable($this->settings)) {
-            return null;
+        $status = GeoDatabase::status($this->settings);
+
+        if ($status !== GeoDatabase::OK && $status !== GeoDatabase::UNSET) {
+            return $status;
         }
 
         $seen = BufferedEvent::query()
@@ -99,11 +110,15 @@ class StatsBuilder
             ->where('country', '!=', '')
             ->exists();
 
-        if ($seen) {
+        if ($seen || ! BufferedEvent::query()->exists()) {
             return null;
         }
 
-        return BufferedEvent::query()->exists() ? 'unconfigured' : null;
+        if ($status === GeoDatabase::OK) {
+            return $this->settings->get('linkrobins-birdseye.geo_ip_prefix', true) ? null : 'prefix_off';
+        }
+
+        return 'unconfigured';
     }
 
     /** Months shown in the by-month table; years are uncapped. */
