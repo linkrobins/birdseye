@@ -49,6 +49,11 @@ const MAP_ZOOM_STEP = 1.6;
  *  than a pan. A held finger drifts a pixel or two on its own. */
 const MAP_TAP_SLOP = 8;
 
+/** Every country_lookup reason the server sends that has its own explanation
+ *  (country_lookup_<reason> in the locale). Anything else is ignored, so an
+ *  older dashboard never renders a raw translation key. */
+const COUNTRY_REASONS = ['unconfigured', 'prefix_off', 'relative', 'folder', 'missing', 'unreadable', 'compressed', 'invalid'];
+
 // Sticky header choices live in localStorage, not in a user preference: they
 // are per-screen viewing state, and the dashboard makes no write requests.
 // Reads and writes are both guarded — Safari's private mode and "block all
@@ -454,7 +459,16 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
    * the empty list does not read as "nobody visited".
    */
   countryNote(): Mithril.Children {
-    return this.countryLookup === 'unconfigured' ? trans('country_lookup_note') : undefined;
+    switch (this.countryLookup) {
+      case null:
+        return undefined;
+      case 'unconfigured':
+        return trans('country_lookup_note');
+      case 'prefix_off':
+        return trans('country_lookup_note_off');
+      default:
+        return trans('country_lookup_note_broken');
+    }
   }
 
   /**
@@ -462,11 +476,15 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
    * blank world will actually be looking. Without this the only difference
    * between "no country lookup configured" and "no visitors" is invisible,
    * which is what sent two operators to the support thread.
+   *
+   * When a database path is set but cannot be used, it says exactly why
+   * (missing, still compressed, ...): "not configured" sent an admin who had
+   * set a path looking for a setting they had already filled in.
    */
   countryNotice(): Mithril.Children {
-    if (this.countryLookup !== 'unconfigured') return null;
+    if (!this.countryLookup || !COUNTRY_REASONS.includes(this.countryLookup)) return null;
 
-    return m('.BirdseyeDashboard-mapNotice', trans('country_lookup_unconfigured'));
+    return m('.BirdseyeDashboard-mapNotice', [trans('country_lookup_' + this.countryLookup), ' ', trans('country_lookup_after')]);
   }
 
   /** A card title with its optional note and, when there is something to

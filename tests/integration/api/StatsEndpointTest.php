@@ -106,6 +106,23 @@ class StatsEndpointTest extends TestCase
         $this->assertNull($this->countryLookup());
     }
 
+    /**
+     * A database path that is set but cannot be used is reported with its
+     * reason, and even with no traffic: it is a definite misconfiguration,
+     * not a judgment from the events. "Not configured" sent an admin who had
+     * set a path looking for a setting they had already filled in
+     * (d/39605/90).
+     *
+     * @test
+     */
+    #[Test]
+    public function a_set_but_unusable_database_is_reported_with_its_reason(): void
+    {
+        $this->setting('linkrobins-birdseye.geoip_db_path', '/nowhere/GeoLite2-Country.mmdb');
+
+        $this->assertSame('missing', $this->countryLookup());
+    }
+
     /** The country_lookup verdict from a fresh dashboard payload. */
     private function countryLookup(): ?string
     {
