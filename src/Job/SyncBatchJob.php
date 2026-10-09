@@ -2,11 +2,13 @@
 
 namespace LinkRobins\Birdseye\Job;
 
+use Flarum\Foundation\Paths;
 use Flarum\Queue\AbstractJob;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use LinkRobins\Birdseye\Buffer\BufferedEvent;
 use LinkRobins\Birdseye\Rollup\Rollup;
+use LinkRobins\Birdseye\Stats\CountryDownload;
 use LinkRobins\Birdseye\Stats\GeoDatabase;
 use LinkRobins\Birdseye\Stats\LocalProcessor;
 
@@ -40,9 +42,9 @@ class SyncBatchJob extends AbstractJob implements ShouldBeUnique
     /** Hard cap per day; a bigger day is truncated and noted in the log. */
     protected const MAX_EVENTS = 100000;
 
-    public function handle(SettingsRepositoryInterface $settings): void
+    public function handle(SettingsRepositoryInterface $settings, Paths $paths): void
     {
-        $processor = new LocalProcessor(GeoDatabase::reader($settings));
+        $processor = new LocalProcessor(GeoDatabase::reader($settings, CountryDownload::fallback($settings, $paths)));
 
         for ($i = 0; $i < self::MAX_DAYS; $i++) {
             $day = $this->oldestCompleteDay();

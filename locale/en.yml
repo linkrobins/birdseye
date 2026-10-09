@@ -34,18 +34,20 @@ linkrobins-birdseye:
       country_lookup_note: not configured
       country_lookup_note_off: lookup turned off
       country_lookup_note_broken: database file not usable
+      country_lookup_note_download: database not downloaded
+      country_credit: IP Geolocation by DB-IP
       country_lookup_unconfigured: >-
         No visitor countries are being recorded, so this map stays empty.
         Birdseye reads a visitor's country from a trusted proxy header such as
-        CF-IPCountry, or failing that from a local MaxMind country database.
-        This forum has neither configured. Set the country database file in
-        the Birdseye settings, or point the trusted country header at whatever
-        your proxy sends.
+        CF-IPCountry, or failing that from a local country database. This
+        forum has neither. Turn on "Download a country database
+        automatically" in the Birdseye settings, set a country database file,
+        or point the trusted country header at whatever your proxy sends.
       country_lookup_prefix_off: >-
-        No visitor countries are being recorded, so this map stays empty. The
-        country database is set up, but "Country lookup via anonymized IP
-        prefix" is turned off, so it is never used. Turn that setting on, or
-        set a trusted country header if your proxy sends one.
+        No visitor countries are being recorded, so this map stays empty.
+        "Country lookup via anonymized IP prefix" is turned off, so the
+        country database is never used. Turn that setting on, or set a
+        trusted country header if your proxy sends one.
       country_lookup_relative: >-
         The country database file can't be used: its setting needs the full
         path on this server, starting with a slash, such as
@@ -71,6 +73,18 @@ linkrobins-birdseye:
       country_lookup_invalid: >-
         The country database file can't be used: the file at that path is not
         a MaxMind database. Point the setting at a GeoLite2-Country.mmdb file.
+      country_lookup_download_failed: >-
+        Birdseye couldn't download its free country database, so no visitor
+        countries are being recorded. Your host may block outgoing
+        connections from PHP; ask them to allow HTTPS to download.db-ip.com,
+        or set a country database file yourself. Birdseye tries again every
+        few hours. The error was:
+      country_lookup_download_pending: >-
+        No visitor countries are being recorded yet. Birdseye downloads a free
+        country database by itself, but it hasn't run yet. That happens on
+        Flarum's scheduler, so check that your cron job runs php flarum
+        schedule:run every minute, or run php flarum birdseye:country-database
+        once to fetch it now.
       country_lookup_after: >-
         Countries appear from the next day processed onwards; days already
         summarised cannot be filled in afterwards.
@@ -118,9 +132,18 @@ linkrobins-birdseye:
         (never the full address) in the 72-hour buffer so visitor countries
         can be resolved locally. Turn off to skip country stats on
         non-proxied traffic.
+      geoip_auto_download_label: Download a country database automatically
+      geoip_auto_download_help: >-
+        Keep DB-IP's free country database on this server, refreshed once a
+        month, so visitor countries work without any setup. Only the database
+        file is downloaded; no visitor data leaves your server, and every
+        lookup happens here. Not used when a country database file is set
+        below.
       geoip_db_path_label: Country database file (optional)
       geoip_db_path_help: >-
-        Full path on this server to a MaxMind country database, such as the
+        Leave empty to use the automatic download above. To use your own
+        database instead, enter the full path on this server to a MaxMind-format
+        country database, such as the
         free GeoLite2-Country.mmdb (download it from maxmind.com under your
         own account, and extract the .mmdb file from the .tar.gz). For example
         /home/you/geoip/GeoLite2-Country.mmdb. Keep it outside your public web

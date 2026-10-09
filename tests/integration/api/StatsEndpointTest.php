@@ -9,9 +9,12 @@
 
 namespace LinkRobins\Birdseye\Tests\integration\api;
 
+use Flarum\Foundation\Paths;
 use Flarum\Group\Group;
 use Flarum\Testing\integration\RetrievesAuthorizedUsers;
 use Flarum\Testing\integration\TestCase;
+use LinkRobins\Birdseye\Stats\CountryDownload;
+use LinkRobins\Birdseye\Tests\unit\MmdbFixture;
 use PHPUnit\Framework\Attributes\Test;
 
 class StatsEndpointTest extends TestCase
@@ -74,6 +77,7 @@ class StatsEndpointTest extends TestCase
     #[Test]
     public function country_lookup_is_flagged_when_no_event_carries_a_country(): void
     {
+        $this->setting('linkrobins-birdseye.geoip_auto_download', '');
         $this->seedEvents(null);
 
         $this->assertSame('unconfigured', $this->countryLookup());
@@ -123,14 +127,88 @@ class StatsEndpointTest extends TestCase
         $this->assertSame('missing', $this->countryLookup());
     }
 
+    /**
+     * With the automatic download on (the default) and nothing downloaded
+     * yet, traffic without countries points at the scheduler, not at a
+     * setting the admin has to find.
+     *
+     * @test
+     */
+    #[Test]
+    public function a_download_that_has_not_run_yet_is_reported_as_pending(): void
+    {
+        $this->seedEvents(null);
+
+        $this->assertSame('download_pending', $this->countryLookup());
+    }
+
+    /**
+     * A failed download is a definite fault, so it is reported even with no
+     * traffic, and with the error itself.
+     *
+     * @test
+     */
+    #[Test]
+    public function a_failed_download_is_reported_with_its_error(): void
+    {
+        $this->setting(CountryDownload::ERROR, 'cURL error 6: Could not resolve host: download.db-ip.com');
+
+        $payload = $this->payload();
+
+        $this->assertSame('download_failed', $payload['country_lookup']);
+        $this->assertSame('cURL error 6: Could not resolve host: download.db-ip.com', $payload['country_error']);
+    }
+
+    /**
+     * Once the DB-IP database is on disk it is used, and the dashboard is
+     * told to show the credit its licence asks for. A failure recorded since
+     * is beside the point while the earlier copy still works.
+     *
+     * @test
+     */
+    #[Test]
+    public function the_downloaded_database_is_used_and_credited(): void
+    {
+        $this->setting(CountryDownload::ERROR, 'a later attempt failed');
+        $path = CountryDownload::path($this->app()->getContainer()->make(Paths::class));
+        @mkdir(dirname($path), 0755, true);
+        file_put_contents($path, MmdbFixture::bytes('DBIP-Country-Lite'));
+
+        try {
+            $payload = $this->payload();
+        } finally {
+            unlink($path);
+        }
+
+        $this->assertNull($payload['country_lookup']);
+        $this->assertTrue($payload['country_credit']);
+    }
+
+    /**
+     * No credit when DB-IP's database is not the one in use.
+     *
+     * @test
+     */
+    #[Test]
+    public function there_is_no_credit_without_the_dbip_database(): void
+    {
+        $this->assertFalse($this->payload()['country_credit']);
+    }
+
     /** The country_lookup verdict from a fresh dashboard payload. */
     private function countryLookup(): ?string
+    {
+        return $this->payload()['country_lookup'];
+    }
+
+    /** @return array<string, mixed> */
+    private function payload(): array
     {
         $response = $this->send($this->request('GET', '/api/birdseye/stats', ['authenticatedAs' => 1]));
 
         $this->assertEquals(200, $response->getStatusCode());
 
-        return json_decode($response->getBody()->getContents(), true)['country_lookup'];
+        return json_decode($response->getBody()->getContents(), true);
     }
 
     /** Two buffered views, both carrying (or both missing) a country. */
