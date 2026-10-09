@@ -52,7 +52,18 @@ const MAP_TAP_SLOP = 8;
 /** Every country_lookup reason the server sends that has its own explanation
  *  (country_lookup_<reason> in the locale). Anything else is ignored, so an
  *  older dashboard never renders a raw translation key. */
-const COUNTRY_REASONS = ['unconfigured', 'prefix_off', 'relative', 'folder', 'missing', 'unreadable', 'compressed', 'invalid'];
+const COUNTRY_REASONS = [
+  'unconfigured',
+  'prefix_off',
+  'relative',
+  'folder',
+  'missing',
+  'unreadable',
+  'compressed',
+  'invalid',
+  'download_failed',
+  'download_pending',
+];
 
 // Sticky header choices live in localStorage, not in a user preference: they
 // are per-screen viewing state, and the dashboard makes no write requests.
@@ -130,6 +141,10 @@ interface StatsPayload {
   /** 'unconfigured' when no country can be resolved at all; null when fine
    *  or when there is too little traffic to tell. */
   country_lookup: string | null;
+  /** Why the automatic database download failed, with 'download_failed'. */
+  country_error?: string | null;
+  /** Countries come from DB-IP's database, whose licence asks for a credit. */
+  country_credit?: boolean;
 }
 
 export interface BirdseyeDashboardAttrs {
@@ -154,6 +169,8 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
   today: TodayBlock | null = null;
   unanswered: ListRow[] = [];
   countryLookup: string | null = null;
+  countryError: string | null = null;
+  countryCredit = false;
   /** Both header choices are sticky — picked once, then restored on every
    *  later visit rather than re-selected each time (d/39605/26). */
   range: RangeKey = readPref('range', RANGES, DEFAULT_RANGE);
@@ -198,6 +215,8 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
         this.today = data.today;
         this.unanswered = data.unanswered || [];
         this.countryLookup = data.country_lookup ?? null;
+        this.countryError = data.country_error ?? null;
+        this.countryCredit = !!data.country_credit;
 
         // A remembered range the payload doesn't carry would render an empty
         // dashboard forever, with no hint that the stored choice is the
@@ -326,6 +345,7 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
             oncreate: (v: Mithril.VnodeDOM) => this.mountMap(v.dom as HTMLElement),
             onupdate: (v: Mithril.VnodeDOM) => this.mountMap(v.dom as HTMLElement),
           }),
+          this.countryCreditEl(),
         ]
       ),
     ]);
@@ -466,6 +486,9 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
         return trans('country_lookup_note');
       case 'prefix_off':
         return trans('country_lookup_note_off');
+      case 'download_failed':
+      case 'download_pending':
+        return trans('country_lookup_note_download');
       default:
         return trans('country_lookup_note_broken');
     }
@@ -484,7 +507,27 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
   countryNotice(): Mithril.Children {
     if (!this.countryLookup || !COUNTRY_REASONS.includes(this.countryLookup)) return null;
 
-    return m('.BirdseyeDashboard-mapNotice', [trans('country_lookup_' + this.countryLookup), ' ', trans('country_lookup_after')]);
+    return m('.BirdseyeDashboard-mapNotice', [
+      trans('country_lookup_' + this.countryLookup),
+      // The download's own error, word for word: "could not resolve host"
+      // tells an admin or their host more than any summary of it would.
+      this.countryLookup === 'download_failed' && this.countryError ? m('code.BirdseyeDashboard-mapError', this.countryError) : null,
+      ' ',
+      trans('country_lookup_after'),
+    ]);
+  }
+
+  /**
+   * The credit DB-IP's free licence (CC BY 4.0) asks for wherever its data is
+   * shown, under the map, when that is where the countries come from.
+   */
+  countryCreditEl(): Mithril.Children {
+    if (!this.countryCredit) return null;
+
+    return m(
+      '.BirdseyeDashboard-mapCredit',
+      m('a', { href: 'https://db-ip.com', target: '_blank', rel: 'noopener noreferrer' }, trans('country_credit'))
+    );
   }
 
   /** A card title with its optional note and, when there is something to

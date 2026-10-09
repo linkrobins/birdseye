@@ -4,6 +4,7 @@ namespace LinkRobins\Birdseye\Stats;
 
 use Flarum\Discussion\Discussion;
 use Flarum\Extension\ExtensionManager;
+use Flarum\Foundation\Paths;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\Post\Post;
 use Flarum\User\User;
@@ -47,16 +48,19 @@ class StatsBuilder
 
     public function __construct(
         protected ExtensionManager $extensions,
-        protected SettingsRepositoryInterface $settings
+        protected SettingsRepositoryInterface $settings,
+        protected Paths $paths
     ) {
     }
 
     /**
-     * @return array{ranges: array<string, mixed>, today: array<string, int>, unanswered: array<int, mixed>, country_lookup: ?string}
+     * @return array{ranges: array<string, mixed>, today: array<string, int>, unanswered: array<int, mixed>, country_lookup: ?string, country_error: ?string, country_credit: bool}
      */
     public function build(User $actor): array
     {
         [$months, $years] = $this->calendar();
+        [$status, $reader] = GeoDatabase::open($this->settings, $this->fallback());
+        $lookup = $this->countryLookup($status, $reader !== null);
 
         return [
             'ranges' => [
@@ -67,7 +71,12 @@ class StatsBuilder
             'years' => $years,
             'today' => $this->today(),
             'unanswered' => $this->unanswered($actor),
-            'country_lookup' => $this->countryLookup(),
+            'country_lookup' => $lookup,
+            // The reason the last download failed, word for word, to go with
+            // the 'download_failed' explanation.
+            'country_error' => $lookup === 'download_failed' ? (string) $this->settings->get(CountryDownload::ERROR) : null,
+            // DB-IP's licence asks for a credit wherever its data is shown.
+            'country_credit' => $reader !== null && GeoDatabase::isDbIp($reader),
         ];
     }
 
@@ -90,17 +99,20 @@ class StatsBuilder
      *   so it is reported whatever the traffic.
      * - 'prefix_off' when the database is fine but the anonymized IP prefix
      *   it needs is not being kept, so it is never consulted.
+     * - 'download_failed' when the automatic database download has failed
+     *   and there is no earlier copy to fall back on.
+     * - 'download_pending' when it is turned on but has not run yet, which
+     *   usually means the scheduler is not running.
      * - 'unconfigured' when neither a database nor a header is in use.
      *
-     * The last two are only said when the buffer holds recent events and not
-     * one of them carries a country. A quiet forum must not be told its
-     * configuration is broken, and a header supplying countries makes both
-     * beside the point.
+     * Apart from a broken path, these are only said when no recent event
+     * carries a country, since a header supplying countries makes them
+     * beside the point; and all but a failed download also need the buffer
+     * to hold events at all, so a quiet forum is not told its setup is
+     * broken.
      */
-    protected function countryLookup(): ?string
+    protected function countryLookup(string $status, bool $usable): ?string
     {
-        $status = GeoDatabase::status($this->settings);
-
         if ($status !== GeoDatabase::OK && $status !== GeoDatabase::UNSET) {
             return $status;
         }
@@ -110,15 +122,35 @@ class StatsBuilder
             ->where('country', '!=', '')
             ->exists();
 
-        if ($seen || ! BufferedEvent::query()->exists()) {
+        if ($seen) {
             return null;
         }
 
-        if ($status === GeoDatabase::OK) {
-            return $this->settings->get('linkrobins-birdseye.geo_ip_prefix', true) ? null : 'prefix_off';
+        $prefix = (bool) $this->settings->get('linkrobins-birdseye.geo_ip_prefix', true);
+        $downloading = ! $usable && $prefix && $this->fallback() !== null;
+
+        if ($downloading && (string) $this->settings->get(CountryDownload::ERROR) !== '') {
+            return 'download_failed';
+        }
+
+        if (! BufferedEvent::query()->exists()) {
+            return null;
+        }
+
+        if ($usable || $this->fallback() !== null) {
+            if (! $prefix) {
+                return 'prefix_off';
+            }
+
+            return $usable ? null : 'download_pending';
         }
 
         return 'unconfigured';
+    }
+
+    protected function fallback(): ?string
+    {
+        return CountryDownload::fallback($this->settings, $this->paths);
     }
 
     /** Months shown in the by-month table; years are uncapped. */

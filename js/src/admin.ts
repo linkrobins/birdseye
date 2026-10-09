@@ -24,6 +24,12 @@ app.initializers.add('linkrobins-birdseye', () => {
       help: app.translator.trans('linkrobins-birdseye.admin.settings.geo_ip_prefix_help'),
     })
     .registerSetting({
+      setting: 'linkrobins-birdseye.geoip_auto_download',
+      type: 'switch',
+      label: app.translator.trans('linkrobins-birdseye.admin.settings.geoip_auto_download_label'),
+      help: app.translator.trans('linkrobins-birdseye.admin.settings.geoip_auto_download_help'),
+    })
+    .registerSetting({
       setting: 'linkrobins-birdseye.geoip_db_path',
       type: 'text',
       placeholder: '/path/to/GeoLite2-Country.mmdb',

@@ -9,6 +9,7 @@ use LinkRobins\Birdseye\Api\StatsHandler;
 use LinkRobins\Birdseye\Api\WorldMapHandler;
 use LinkRobins\Birdseye\Capture\ApiCaptureMiddleware;
 use LinkRobins\Birdseye\Capture\ForumCaptureMiddleware;
+use LinkRobins\Birdseye\Console\CountryDatabaseCommand;
 use LinkRobins\Birdseye\Console\DigestCommand;
 use LinkRobins\Birdseye\Console\SyncCommand;
 use LinkRobins\Birdseye\Listener\RecordPosted;
@@ -73,6 +74,12 @@ return [
         // firing (or a multi-node race) a no-op.
         ->schedule(DigestCommand::class, function ($event) {
             $event->weeklyOn(1, '7:30')->onOneServer()->withoutOverlapping();
+        })
+        ->command(CountryDatabaseCommand::class)
+        // Hourly, but nearly every run just checks whether a new monthly
+        // edition is due; the download itself happens about once a month.
+        ->schedule(CountryDatabaseCommand::class, function ($event) {
+            $event->hourly()->onOneServer()->withoutOverlapping();
         }),
 
     (new Extend\Settings())
@@ -84,6 +91,10 @@ return [
         // a country header. Downloaded by the admin under their own MaxMind
         // account; everything is looked up locally.
         ->default('linkrobins-birdseye.geoip_db_path', '')
+        // With no path set, Birdseye downloads DB-IP's free country database
+        // into storage/ once a month instead (CountryDownload). Only the
+        // file is fetched; no visitor data leaves the server.
+        ->default('linkrobins-birdseye.geoip_auto_download', true)
         // Monday email to admins summarizing last week's rollups. Local
         // only; skips silently when the week has no data.
         ->default('linkrobins-birdseye.weekly_digest', true)
