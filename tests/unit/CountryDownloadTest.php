@@ -13,9 +13,11 @@ use Flarum\Foundation\Config;
 use Flarum\Foundation\Paths;
 use Flarum\Settings\SettingsRepositoryInterface;
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Middleware;
+use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use LinkRobins\Birdseye\Stats\CountryDownload;
 use LinkRobins\Birdseye\Stats\GeoDatabase;
@@ -165,6 +167,27 @@ class CountryDownloadTest extends TestCase
 
         $this->assertSame('the old database', file_get_contents($this->file()));
         $this->assertStringContainsString('HTTP 503', (string) $this->settings->get(CountryDownload::ERROR));
+        $this->assertNoTempFiles();
+    }
+
+    #[Test]
+    public function a_host_blocking_outgoing_connections_is_reported_in_plain_words(): void
+    {
+        $error = new ConnectException(
+            'cURL error 6: Could not resolve host: download.db-ip.com (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for https://download.db-ip.com/free/x',
+            new Request('GET', 'https://download.db-ip.com/free/x')
+        );
+
+        try {
+            $this->download([$error])->run(time());
+            $this->fail('Expected the download to fail.');
+        } catch (RuntimeException) {
+        }
+
+        $this->assertSame(
+            'cURL error 6: Could not resolve host: download.db-ip.com for https://download.db-ip.com/free/x',
+            $this->settings->get(CountryDownload::ERROR)
+        );
         $this->assertNoTempFiles();
     }
 

@@ -511,7 +511,7 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
       trans('country_lookup_' + this.countryLookup),
       // The download's own error, word for word: "could not resolve host"
       // tells an admin or their host more than any summary of it would.
-      this.countryLookup === 'download_failed' && this.countryError ? [' ', m('code', this.countryError)] : null,
+      this.countryLookup === 'download_failed' && this.countryError ? m('code.BirdseyeDashboard-mapError', this.countryError) : null,
       ' ',
       trans('country_lookup_after'),
     ]);

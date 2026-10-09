@@ -149,7 +149,10 @@ class CountryDownload
 
             throw new RuntimeException('DB-IP has no country database for '.implode(' or ', $editions).'.');
         } catch (\Throwable $e) {
-            $this->settings->set(self::ERROR, mb_substr($e->getMessage(), 0, 500));
+            // cURL's messages end in a pointer to its docs, which helps
+            // nobody reading the dashboard.
+            $message = (string) preg_replace('# \(see https?://curl\.[^)]*\)#', '', $e->getMessage());
+            $this->settings->set(self::ERROR, mb_substr($message, 0, 500));
 
             throw $e instanceof RuntimeException ? $e : new RuntimeException($e->getMessage(), 0, $e);
         }
