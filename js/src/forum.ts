@@ -1,7 +1,6 @@
 import app from 'flarum/forum/app';
 import { extend } from 'flarum/common/extend';
 import Button from 'flarum/common/components/Button';
-import BirdseyeModal from './forum/components/BirdseyeModal';
 
 // Mithril is the global Flarum exposes, and core's own JSX compiles to these
 // same `m(...)` calls. Deliberately not imported: flarum-webpack-config does
@@ -24,7 +23,11 @@ app.initializers.add('linkrobins-birdseye', () => {
         Button,
         {
           icon: 'fas fa-chart-line',
-          onclick: () => app.modal.show(BirdseyeModal),
+          // The modal and the dashboard it renders load on demand, as their
+          // own chunk: most visitors never open Analytics, and parsing the
+          // dashboard on every page costs phones time. extend.php publishes
+          // the chunk with ->jsDirectory().
+          onclick: () => app.modal.show(() => import('./forum/components/BirdseyeModal')),
         },
         app.translator.trans('linkrobins-birdseye.forum.session_menu.analytics_button')
       ),
