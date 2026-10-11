@@ -30,6 +30,9 @@ return [
     // dashboard in a modal, for groups granted the viewStats permission.
     (new Extend\Frontend('forum'))
         ->js(__DIR__ . '/js/dist/forum.js')
+        // The Analytics modal's lazily loaded chunk. Without this it is never
+        // published and the session-menu entry opens nothing.
+        ->jsDirectory(__DIR__ . '/js/dist/forum')
         ->css(__DIR__ . '/less/forum.less'),
 
     // Tells the forum frontend whether to offer that entry (fail-closed).
