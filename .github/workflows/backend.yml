@@ -1,6 +1,15 @@
 name: Backend
 
-on: [workflow_dispatch, push, pull_request]
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+  # Weekly, against the newest Flarum 2.x: there is no composer.lock, so every
+  # run installs the latest core. A Flarum release that breaks this extension
+  # fails here before a user reports it. The dev sweep (devsweep-stack) reads
+  # the result every Thursday.
+  schedule:
+    - cron: '17 6 * * 3'
 
 # The backend workflow only reads the repository.
 permissions:
