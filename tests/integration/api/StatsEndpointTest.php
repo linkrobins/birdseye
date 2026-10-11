@@ -195,6 +195,49 @@ class StatsEndpointTest extends TestCase
         $this->assertFalse($this->payload()['country_credit']);
     }
 
+    /**
+     * A forum whose scheduler never runs keeps today's numbers (read live
+     * from the buffer) while the charts stop at the last day summarised. It
+     * looked like Birdseye forgetting (d/39605/98). The payload now names the
+     * oldest day the hourly sync has missed.
+     *
+     * @test
+     */
+    #[Test]
+    public function a_day_the_sync_has_missed_is_reported(): void
+    {
+        $day = gmdate('Y-m-d', strtotime('-2 days'));
+        $this->seedEventOn($day);
+
+        $this->assertSame($day, $this->payload()['sync_behind']);
+    }
+
+    /** @test */
+    #[Test]
+    public function today_still_accumulating_is_not_a_missed_sync(): void
+    {
+        $this->seedEvents('US');
+
+        $this->assertNull($this->payload()['sync_behind']);
+    }
+
+    /** @test */
+    #[Test]
+    public function an_empty_buffer_is_not_a_missed_sync(): void
+    {
+        $this->assertNull($this->payload()['sync_behind']);
+    }
+
+    private function seedEventOn(string $day): void
+    {
+        $this->database()->table('birdseye_events')->insert([
+            'type' => 'view',
+            'path' => '/',
+            'visitor' => 'v001',
+            'occurred_at' => "{$day} 10:00:00",
+        ]);
+    }
+
     /** The country_lookup verdict from a fresh dashboard payload. */
     private function countryLookup(): ?string
     {

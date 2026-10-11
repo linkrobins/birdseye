@@ -85,6 +85,14 @@ linkrobins-birdseye:
         Flarum's scheduler, so check that your cron job runs php flarum
         schedule:run every minute, or run php flarum birdseye:country-database
         once to fetch it now.
+      sync_behind: >-
+        Your statistics are missing every day from {date} on. Birdseye adds
+        up each finished day on Flarum's scheduler, and that hasn't happened
+        since, so only today's numbers are moving. Set up a cron job that
+        runs php flarum schedule:run every minute, then run php flarum
+        birdseye:sync once to catch up now. Visits are only kept for 3 days,
+        so do it soon. If the cron job is already in place, look in
+        storage/logs for a Birdseye error.
       country_lookup_after: >-
         Countries appear from the next day processed onwards; days already
         summarised cannot be filled in afterwards.

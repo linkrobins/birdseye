@@ -377,6 +377,18 @@
     }
   }
 
+  // The hourly sync has missed a day. Amber, because every chart is wrong
+  // until the server is fixed.
+  &-syncNotice {
+    background: var(--control-bg);
+    border-left: 3px solid #ffb020;
+    border-radius: var(--border-radius);
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 0 0 16px;
+    padding: 10px 14px;
+  }
+
   // Shown in place of an explanation nobody had: a blank world map and a
   // world with no visitors look identical, so say which one this is.
   &-mapNotice {
