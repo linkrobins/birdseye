@@ -9,10 +9,12 @@
 
 namespace LinkRobins\Birdseye\Tests\integration\api;
 
+use Carbon\Carbon;
 use Flarum\Foundation\Paths;
 use Flarum\Group\Group;
 use Flarum\Testing\integration\RetrievesAuthorizedUsers;
 use Flarum\Testing\integration\TestCase;
+use Illuminate\Contracts\Cache\Repository as Cache;
 use LinkRobins\Birdseye\Stats\CountryDownload;
 use LinkRobins\Birdseye\Tests\unit\MmdbFixture;
 use PHPUnit\Framework\Attributes\Test;
@@ -226,6 +228,41 @@ class StatsEndpointTest extends TestCase
     public function an_empty_buffer_is_not_a_missed_sync(): void
     {
         $this->assertNull($this->payload()['sync_behind']);
+    }
+
+    /**
+     * The notice says which of the two it is: no scheduler at all, or a
+     * scheduler that runs while the sync fails. Read the way core's own
+     * status line reads it.
+     *
+     * @test
+     */
+    #[Test]
+    public function a_scheduler_that_never_ran_is_reported_as_not_running(): void
+    {
+        // The test cache is file-backed and outlives a run, so clear the
+        // stamp an earlier test may have left.
+        $this->app()->getContainer()->make(Cache::class)->forget('flarum:schedule:last_run');
+
+        $this->assertFalse($this->payload()['scheduler_running']);
+    }
+
+    /** @test */
+    #[Test]
+    public function a_scheduler_that_ran_recently_is_reported_as_running(): void
+    {
+        $this->app()->getContainer()->make(Cache::class)->forever('flarum:schedule:last_run', Carbon::now());
+
+        $this->assertTrue($this->payload()['scheduler_running']);
+    }
+
+    /** @test */
+    #[Test]
+    public function a_scheduler_that_stopped_is_reported_as_not_running(): void
+    {
+        $this->app()->getContainer()->make(Cache::class)->forever('flarum:schedule:last_run', Carbon::now()->subHour());
+
+        $this->assertFalse($this->payload()['scheduler_running']);
     }
 
     private function seedEventOn(string $day): void

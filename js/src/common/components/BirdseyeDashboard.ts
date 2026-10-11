@@ -147,6 +147,8 @@ interface StatsPayload {
   country_credit?: boolean;
   /** The oldest day the hourly sync has missed (YYYY-MM-DD), or null. */
   sync_behind?: string | null;
+  /** Whether Flarum's scheduler ran in the last five minutes. */
+  scheduler_running?: boolean;
 }
 
 export interface BirdseyeDashboardAttrs {
@@ -174,6 +176,7 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
   countryError: string | null = null;
   countryCredit = false;
   syncBehind: string | null = null;
+  schedulerRunning = false;
   /** Both header choices are sticky — picked once, then restored on every
    *  later visit rather than re-selected each time (d/39605/26). */
   range: RangeKey = readPref('range', RANGES, DEFAULT_RANGE);
@@ -221,6 +224,7 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
         this.countryError = data.country_error ?? null;
         this.countryCredit = !!data.country_credit;
         this.syncBehind = data.sync_behind ?? null;
+        this.schedulerRunning = !!data.scheduler_running;
 
         // A remembered range the payload doesn't carry would render an empty
         // dashboard forever, with no hint that the stored choice is the
@@ -504,12 +508,20 @@ export default class BirdseyeDashboard extends Component<BirdseyeDashboardAttrs>
    * Shown when the hourly sync has missed a day. Today's tile keeps counting,
    * because it reads the buffer directly, while every chart stops at the last
    * day summarised; without a word about it that looks like Birdseye losing
-   * data (discuss.flarum.org d/39605/98).
+   * data (discuss.flarum.org d/39605/98). It only says whether the scheduler
+   * is missing and links Flarum's own setup guide for it.
    */
   syncNotice(): Mithril.Children {
     if (!this.syncBehind) return null;
 
-    return m('.BirdseyeDashboard-syncNotice', transText('sync_behind', { date: shortDate(this.syncBehind) }));
+    const date = shortDate(this.syncBehind);
+
+    return m(
+      '.BirdseyeDashboard-syncNotice',
+      this.schedulerRunning
+        ? trans('sync_behind_failing', { date })
+        : trans('sync_behind_no_scheduler', { date, a: m('a', { href: SCHEDULER_DOCS, target: '_blank', rel: 'noopener' }) })
+    );
   }
 
   /**
@@ -1184,9 +1196,12 @@ function clampAxis(offset: number, edge: number, size: number, frameStart: numbe
 const DONUT_PALETTE = ['#1ec3d6', '#6c8cff', '#ffb020', '#f2617a', '#34c759', '#a06cff'];
 const DONUT_OTHER = '#8a97a6';
 
+/** Flarum's guide to setting up the scheduler, linked from the sync notice. */
+const SCHEDULER_DOCS = 'https://docs.flarum.org/scheduler/';
+
 // lib.* keys ship to both frontends (admin.*/forum.* are filtered per-bundle).
-function trans(key: string): Mithril.Children {
-  return app.translator.trans(`linkrobins-birdseye.lib.dashboard.${key}`);
+function trans(key: string, params: Record<string, unknown> = {}): Mithril.Children {
+  return app.translator.trans(`linkrobins-birdseye.lib.dashboard.${key}`, params);
 }
 
 function transText(key: string, params: Record<string, unknown> = {}): string {

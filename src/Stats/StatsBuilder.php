@@ -8,6 +8,7 @@ use Flarum\Foundation\Paths;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\Post\Post;
 use Flarum\User\User;
+use Illuminate\Contracts\Cache\Repository as Cache;
 use LinkRobins\Birdseye\Buffer\BufferedEvent;
 use LinkRobins\Birdseye\Rollup\Rollup;
 
@@ -49,12 +50,13 @@ class StatsBuilder
     public function __construct(
         protected ExtensionManager $extensions,
         protected SettingsRepositoryInterface $settings,
-        protected Paths $paths
+        protected Paths $paths,
+        protected Cache $cache
     ) {
     }
 
     /**
-     * @return array{ranges: array<string, mixed>, today: array<string, int>, unanswered: array<int, mixed>, country_lookup: ?string, country_error: ?string, country_credit: bool, sync_behind: ?string}
+     * @return array{ranges: array<string, mixed>, today: array<string, int>, unanswered: array<int, mixed>, country_lookup: ?string, country_error: ?string, country_credit: bool, sync_behind: ?string, scheduler_running: bool}
      */
     public function build(User $actor): array
     {
@@ -78,6 +80,7 @@ class StatsBuilder
             // DB-IP's licence asks for a credit wherever its data is shown.
             'country_credit' => $reader !== null && GeoDatabase::isDbIp($reader),
             'sync_behind' => $this->syncBehind(),
+            'scheduler_running' => $this->schedulerRunning(),
         ];
     }
 
@@ -183,6 +186,19 @@ class StatsBuilder
         $due = strtotime("{$day} 00:00:00 UTC") + 86400 + self::SYNC_GRACE;
 
         return time() >= $due ? $day : null;
+    }
+
+    /**
+     * Whether Flarum's scheduler has run in the last five minutes, read the
+     * same way core's own status line does (`php flarum info`, the admin
+     * dashboard), so the two never disagree. With the scheduler running, a
+     * missed day means the sync itself is failing.
+     */
+    protected function schedulerRunning(): bool
+    {
+        $last = $this->cache->get('flarum:schedule:last_run');
+
+        return $last !== null && strtotime((string) $last) > time() - 300;
     }
 
     /**
