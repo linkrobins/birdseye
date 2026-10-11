@@ -2,6 +2,10 @@ name: Backend
 
 on: [workflow_dispatch, push, pull_request]
 
+# The backend workflow only reads the repository.
+permissions:
+  contents: read
+
 jobs:
   run:
     uses: flarum/framework/.github/workflows/REUSABLE_backend.yml@2.x
