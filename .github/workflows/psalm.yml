@@ -1,0 +1,17 @@
+name: Psalm
+
+# Security scan of the extension's PHP (CodeQL does not read PHP). Findings
+# appear on the code scanning page under psalm-taint and never fail the build.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  taint:
+    uses: karl-bullock/ci-workflows/.github/workflows/psalm.yml@v2
