@@ -8,6 +8,7 @@ use Flarum\Foundation\Paths;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\Post\Post;
 use Flarum\User\User;
+use Illuminate\Contracts\Cache\Repository as Cache;
 use LinkRobins\Birdseye\Buffer\BufferedEvent;
 use LinkRobins\Birdseye\Rollup\Rollup;
 
@@ -49,12 +50,13 @@ class StatsBuilder
     public function __construct(
         protected ExtensionManager $extensions,
         protected SettingsRepositoryInterface $settings,
-        protected Paths $paths
+        protected Paths $paths,
+        protected Cache $cache
     ) {
     }
 
     /**
-     * @return array{ranges: array<string, mixed>, today: array<string, int>, unanswered: array<int, mixed>, country_lookup: ?string, country_error: ?string, country_credit: bool}
+     * @return array{ranges: array<string, mixed>, today: array<string, int>, unanswered: array<int, mixed>, country_lookup: ?string, country_error: ?string, country_credit: bool, sync_behind: ?string, scheduler_running: bool}
      */
     public function build(User $actor): array
     {
@@ -77,6 +79,8 @@ class StatsBuilder
             'country_error' => $lookup === 'download_failed' ? (string) $this->settings->get(CountryDownload::ERROR) : null,
             // DB-IP's licence asks for a credit wherever its data is shown.
             'country_credit' => $reader !== null && GeoDatabase::isDbIp($reader),
+            'sync_behind' => $this->syncBehind(),
+            'scheduler_running' => $this->schedulerRunning(),
         ];
     }
 
@@ -155,6 +159,47 @@ class StatsBuilder
 
     /** Months shown in the by-month table; years are uncapped. */
     protected const MONTHS_CAP = 24;
+
+    /** How long after a day ends the hourly sync may take before it counts as missed. */
+    protected const SYNC_GRACE = 2 * 3600;
+
+    /**
+     * The oldest day still waiting to be summarised, once the hourly sync has
+     * had time to take it, and otherwise null.
+     *
+     * The sync always consumes the oldest complete UTC day first, so a day
+     * left in the buffer this long after it ended means the sync is not
+     * running: usually a scheduler with no cron job behind it, sometimes a
+     * sync that fails every time. Either way the charts stop at the day
+     * before while today's numbers, read straight from the buffer, carry on,
+     * which looks like Birdseye forgetting (discuss.flarum.org d/39605/98).
+     */
+    protected function syncBehind(): ?string
+    {
+        $oldest = BufferedEvent::query()->min('occurred_at');
+
+        if ($oldest === null) {
+            return null;
+        }
+
+        $day = substr((string) $oldest, 0, 10);
+        $due = strtotime("{$day} 00:00:00 UTC") + 86400 + self::SYNC_GRACE;
+
+        return time() >= $due ? $day : null;
+    }
+
+    /**
+     * Whether Flarum's scheduler has run in the last five minutes, read the
+     * same way core's own status line does (`php flarum info`, the admin
+     * dashboard), so the two never disagree. With the scheduler running, a
+     * missed day means the sync itself is failing.
+     */
+    protected function schedulerRunning(): bool
+    {
+        $last = $this->cache->get('flarum:schedule:last_run');
+
+        return $last !== null && strtotime((string) $last) > time() - 300;
+    }
 
     /**
      * Calendar summaries: the full rollup history folded into per-month and

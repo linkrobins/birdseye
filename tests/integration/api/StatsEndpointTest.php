@@ -9,10 +9,12 @@
 
 namespace LinkRobins\Birdseye\Tests\integration\api;
 
+use Carbon\Carbon;
 use Flarum\Foundation\Paths;
 use Flarum\Group\Group;
 use Flarum\Testing\integration\RetrievesAuthorizedUsers;
 use Flarum\Testing\integration\TestCase;
+use Illuminate\Contracts\Cache\Repository as Cache;
 use LinkRobins\Birdseye\Stats\CountryDownload;
 use LinkRobins\Birdseye\Tests\unit\MmdbFixture;
 use PHPUnit\Framework\Attributes\Test;
@@ -193,6 +195,84 @@ class StatsEndpointTest extends TestCase
     public function there_is_no_credit_without_the_dbip_database(): void
     {
         $this->assertFalse($this->payload()['country_credit']);
+    }
+
+    /**
+     * A forum whose scheduler never runs keeps today's numbers (read live
+     * from the buffer) while the charts stop at the last day summarised. It
+     * looked like Birdseye forgetting (d/39605/98). The payload now names the
+     * oldest day the hourly sync has missed.
+     *
+     * @test
+     */
+    #[Test]
+    public function a_day_the_sync_has_missed_is_reported(): void
+    {
+        $day = gmdate('Y-m-d', strtotime('-2 days'));
+        $this->seedEventOn($day);
+
+        $this->assertSame($day, $this->payload()['sync_behind']);
+    }
+
+    /** @test */
+    #[Test]
+    public function today_still_accumulating_is_not_a_missed_sync(): void
+    {
+        $this->seedEvents('US');
+
+        $this->assertNull($this->payload()['sync_behind']);
+    }
+
+    /** @test */
+    #[Test]
+    public function an_empty_buffer_is_not_a_missed_sync(): void
+    {
+        $this->assertNull($this->payload()['sync_behind']);
+    }
+
+    /**
+     * The notice says which of the two it is: no scheduler at all, or a
+     * scheduler that runs while the sync fails. Read the way core's own
+     * status line reads it.
+     *
+     * @test
+     */
+    #[Test]
+    public function a_scheduler_that_never_ran_is_reported_as_not_running(): void
+    {
+        // The test cache is file-backed and outlives a run, so clear the
+        // stamp an earlier test may have left.
+        $this->app()->getContainer()->make(Cache::class)->forget('flarum:schedule:last_run');
+
+        $this->assertFalse($this->payload()['scheduler_running']);
+    }
+
+    /** @test */
+    #[Test]
+    public function a_scheduler_that_ran_recently_is_reported_as_running(): void
+    {
+        $this->app()->getContainer()->make(Cache::class)->forever('flarum:schedule:last_run', Carbon::now());
+
+        $this->assertTrue($this->payload()['scheduler_running']);
+    }
+
+    /** @test */
+    #[Test]
+    public function a_scheduler_that_stopped_is_reported_as_not_running(): void
+    {
+        $this->app()->getContainer()->make(Cache::class)->forever('flarum:schedule:last_run', Carbon::now()->subHour());
+
+        $this->assertFalse($this->payload()['scheduler_running']);
+    }
+
+    private function seedEventOn(string $day): void
+    {
+        $this->database()->table('birdseye_events')->insert([
+            'type' => 'view',
+            'path' => '/',
+            'visitor' => 'v001',
+            'occurred_at' => "{$day} 10:00:00",
+        ]);
     }
 
     /** The country_lookup verdict from a fresh dashboard payload. */

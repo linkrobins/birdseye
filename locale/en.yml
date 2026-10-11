@@ -85,6 +85,12 @@ linkrobins-birdseye:
         Flarum's scheduler, so check that your cron job runs php flarum
         schedule:run every minute, or run php flarum birdseye:country-database
         once to fetch it now.
+      sync_behind_no_scheduler: >-
+        Statistics haven't updated since {date}: Flarum's scheduler isn't
+        running. <a>Set up the scheduler</a>
+      sync_behind_failing: >-
+        Statistics haven't updated since {date}, but Flarum's scheduler is
+        running. Check storage/logs for a Birdseye error.
       country_lookup_after: >-
         Countries appear from the next day processed onwards; days already
         summarised cannot be filled in afterwards.
