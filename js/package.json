@@ -6,7 +6,8 @@
         "dev": "webpack --mode development --watch",
         "build": "webpack --mode production",
         "format": "prettier --write src forum.js admin.js webpack.config.js",
-        "format-check": "prettier --check src forum.js admin.js webpack.config.js"
+        "format-check": "prettier --check src forum.js admin.js webpack.config.js",
+        "check-typings": "tsc --noEmit"
     },
     "devDependencies": {
         "@flarum/prettier-config": "^1.0.0",
