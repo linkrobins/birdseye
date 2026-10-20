@@ -12,7 +12,8 @@ jobs:
     with:
       enable_bundlewatch: false
       enable_prettier: true
-      enable_typescript: false
+      enable_typescript: true
+      type_coverage_script: ""
 
       frontend_directory: ./js
       backend_directory: .
