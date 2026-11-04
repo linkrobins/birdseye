@@ -10,11 +10,22 @@ Events sit in a short-lived local buffer (72 hours max). Once a day, the buffer 
 
 Everything is computed **on your own server**: pageviews, visitors, bounce rate, session length, top pages and discussions, referrer sources, devices, countries (world map included). There is no account, no license key, and no external service. Nothing ever leaves your forum, and the full picture is free.
 
+## What the dashboard shows
+
+- **Traffic.** Visitors, pageviews, bounce rate and average visit length, with a visitors-per-day chart over 7 or 30 days, plus history by month and by year.
+- **Content.** Top pages, top discussions and top tags, and a "Needs a reply" list of discussions viewed this week that have no replies.
+- **Audience.** Referrer sources, devices, and countries as bars, a pie chart or a zoomable full-screen world map.
+- **Community.** Posts, signups (accounts created) and new members (accounts that confirmed their email), and the search terms people use.
+- **Today so far.** A live strip from the buffer that becomes final when the day closes.
+- **Export.** A CSV export of any card or of every card at once.
+
+It appears on the Birdseye settings page in the admin panel, and in a modal opened from the user menu for groups you grant access.
+
 ## Beyond the numbers
 
 - **Forum health, not just traffic.** New members per day, discussions that get read but never answered, top tags, live search terms, and a "today so far" strip straight from the buffer.
-- **Share the dashboard.** A `View forum analytics` permission lets any group you choose open the dashboard from their user menu, without admin access. Nobody holds it until you grant it.
-- **Weekly digest.** Every Monday, administrators get a plain-text email summary of last week against the week before. One switch to turn off.
+- **Share the dashboard.** A `View forum analytics` permission lets any group you choose open the dashboard from an **Analytics** entry in their user menu, without admin access. Nobody holds it until you grant it, and administrators always have it.
+- **Weekly digest.** Every Monday morning (UTC), administrators get an email summary of last week against the week before: visitors, pageviews, posts, signups, top discussion and top search, sent by your forum's own mailer. It is skipped when the week has no data, and one switch turns it off.
 - **History by month and year,** and a CSV export of every card.
 
 ## Visitor countries
@@ -41,18 +52,50 @@ Countries appear from the next day processed onwards. Days already summarised ca
 
 If something is wrong, the world map says what: the download failing or not having run yet, a path that isn't a full path, a folder instead of the file, no file at that path, a file PHP can't read, the still-compressed download, or a file that isn't a MaxMind database.
 
+## Requirements
+
+- Flarum 2.x and PHP 8.3 or newer. Flarum 1.8 forums install the 1.x line of the same package; Composer picks the right one for your forum.
+- The [scheduler](https://docs.flarum.org/scheduler) must be running for rollups, the weekly digest and the country database (`php flarum schedule:run` via cron every minute).
+
 ## Installation
 
 ```sh
 composer require linkrobins/birdseye
 ```
 
-Enable it in the admin panel. Stats begin collecting immediately.
+Then toggle it on in the admin panel's **Extensions** page. Stats begin collecting immediately.
 
-## Requirements
+## Updating
 
-- Flarum `2.x`, PHP `8.3` or newer
-- The [scheduler](https://docs.flarum.org/scheduler) must be running for daily rollups (`php flarum schedule:run` via cron).
+```sh
+composer update linkrobins/birdseye
+php flarum cache:clear
+```
+
+## Settings
+
+Admin, then Extensions, then Birdseye.
+
+| Setting | Default | What it does |
+|---|---|---|
+| Collect analytics | On | Pause collection without disabling the extension. Existing stats keep rendering. |
+| Weekly email digest | On | The Monday summary email to administrators. |
+| Download a country database automatically | On | Keeps DB-IP's free country database on your server, refreshed monthly. Not used when a database file is set. |
+| Country database file (optional) | empty | Full path to your own MaxMind-format country database. Always takes the place of the automatic download. |
+| Country lookup via anonymized IP prefix | On | Keeps a truncated IP prefix in the 72-hour buffer so countries can be resolved without a proxy header. |
+| Trusted country header | `CF-IPCountry` | The proxy header carrying each visitor's two-letter country code. Leave empty if you have no such proxy. |
+
+## Commands
+
+Birdseye registers three commands on Flarum's scheduler. You never need to run them by hand, but you can:
+
+- `php flarum birdseye:sync` rolls up the buffered events into daily totals and prunes the buffer (hourly).
+- `php flarum birdseye:digest` sends the weekly digest (Mondays).
+- `php flarum birdseye:country-database` downloads the country database when a new edition is due (checked hourly).
+
+## What is counted
+
+Page and discussion views, searches, posts and registrations. Requests from bots and crawlers (by user agent) are not counted. Capture is best-effort and never gets in the way of a request. If the scheduler stops, the dashboard says statistics have not updated since a given date, and whether the scheduler appears to be running; the buffer holds 72 hours, so a longer outage loses the days beyond that.
 
 ## Privacy notes
 
